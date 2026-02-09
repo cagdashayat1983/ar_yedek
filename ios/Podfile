@@ -2,7 +2,7 @@ platform :ios, '13.0'
 
 target 'Runner' do
   use_frameworks!
-  use_native_modules!
+  # Hatalı olan 'use_native_modules!' satırı silindi.
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
@@ -13,6 +13,7 @@ target 'Runner' do
       target.build_configurations.each do |config|
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
           '$(inherited)',
+          # PERMISSION_HANDLER İÇİN KAMERA VE GALERİ İZİNLERİ:
           'PERMISSION_CAMERA=1',
           'PERMISSION_MICROPHONE=1',
           'PERMISSION_PHOTOS=1',
