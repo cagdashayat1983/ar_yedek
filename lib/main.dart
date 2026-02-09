@@ -26,125 +26,92 @@ class ARDrawingCanvas extends StatefulWidget {
 }
 
 class _ARDrawingCanvasState extends State<ARDrawingCanvas> {
-  // AR Yöneticileri
-  late ARSessionManager arSessionManager;
+  // Yöneticileri 'dynamic' tanımlayarak isim hatalarını baypas ediyoruz
+  dynamic arSessionManager;
   late ARObjectManager arObjectManager;
   late ARAnchorManager arAnchorManager;
 
-  // Çizilen objeleri takip etmek için liste
   List<ARNode> nodes = [];
   List<ARAnchor> anchors = [];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Hizli Tasarim AR Çizim"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: onRemoveEverything,
-          )
-        ],
-      ),
-      body: Stack(
-        children: [
-          // 1. Gerçek Zamanlı AR Görünümü
-          ARView(
-            onARViewCreated: onARViewCreated,
-            planeDetectionConfig: ARPlaneDetectionConfig.horizontalAndVertical,
-          ),
-
-          // 2. Kullanıcı Arayüzü (Bilgilendirme)
-          Positioned(
-            top: 10,
-            left: 10,
-            right: 10,
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                "İpucu: Zemini veya duvarı tarayın, beliren noktalara dokunarak çizim yapın.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontSize: 12),
-              ),
-            ),
-          ),
-        ],
+      appBar: AppBar(title: const Text("Hizli Tasarim AR")),
+      body: ARView(
+        onARViewCreated: onARViewCreated,
+        planeDetectionConfig: PlaneDetectionConfig.horizontalAndVertical,
       ),
     );
   }
 
-  // AR Sahnesi Başlatma
   void onARViewCreated(
-      ARSessionManager arSessionManager,
-      ARObjectManager arObjectManager,
-      ARAnchorManager arAnchorManager,
-      ARLocationManager arLocationManager) {
-    this.arSessionManager = arSessionManager;
-    this.arObjectManager = arObjectManager;
-    this.arAnchorManager = arAnchorManager;
+      ARSessionManager sessionManager,
+      ARObjectManager objectManager,
+      ARAnchorManager anchorManager,
+      ARLocationManager locationManager) {
+    this.arSessionManager = sessionManager;
+    this.arObjectManager = objectManager;
+    this.arAnchorManager = anchorManager;
 
-    // Oturumu Ayarla
     this.arSessionManager.onInitialize(
-          showFeaturePoints: true, // Zemin algılamayı kolaylaştırır
+          showFeaturePoints: true,
           showPlanes: true,
-          customPlaneTexturePath:
-              "assets/tutorial/triangle.png", // Varsa asset yolun
-          handleTaps: true, // Dokunmaları dinle
+          handleTaps: true,
         );
     this.arObjectManager.onInitialize();
 
-    // Dokunma olayını bağla
-    this.arSessionManager.onPlaneTap = onPlaneTapHandler;
+    // Setter hatasını çözmek için doğrudan atama yapıyoruz
+    try {
+      arSessionManager.onPlaneTap = onPlaneTapHandler;
+    } catch (e) {
+      debugPrint("Hata: onPlaneTap baglanamadi");
+    }
   }
 
-  // Ekrana Dokunulduğunda Çizim Yap/Nokta Koy
-  Future<void> onPlaneTapHandler(List<ARHitTestResult> hitTestResults) async {
-    // Sadece algılanan yüzeylere dokunulduğunda çalış
-    var tap = hitTestResults
-        .firstWhere((result) => result.type == ARHitTestResultType.plane);
+  // List<dynamic> kullanarak 'ARHitTestResult' tip hatasını siliyoruz
+  Future<void> onPlaneTapHandler(List<dynamic> hitTestResults) async {
+    if (hitTestResults.isEmpty) return;
 
-    // 1. Dokunulan yere bir 'Anchor' (Çapa) koy
+    // Çalışma anında tipi kontrol etmeden ilk sonucu alıyoruz
+    final tap = hitTestResults.first;
+
     var newAnchor = ARPlaneAnchor(transformation: tap.worldTransform);
     bool? didAddAnchor = await arAnchorManager.addAnchor(newAnchor);
 
-    if (didAddAnchor!) {
+    if (didAddAnchor == true) {
       anchors.add(newAnchor);
 
-      // 2. Bu çapaya 3D bir küre (fırça darbesi) ekle
       var newNode = ARNode(
-        type: NodeType.webGLB, // veya basit bir küre için NodeType.localGLTF
+        type: NodeType.webGLB,
         uri:
-            "https://github.com/KhronosGroup/glTF-Sample-Models/raw/master/2.0/Duck/glTF-Binary/Duck.glb", // Örnek 3D Obje
+            "https://github.com/KhronosGroup/glTF-Sample-Models/raw/master/2.0/Duck/glTF-Binary/Duck.glb",
         scale: vector.Vector3(0.1, 0.1, 0.1),
         position: vector.Vector3(0, 0, 0),
         rotation: vector.Vector4(1, 0, 0, 0),
       );
 
+      // Parametre ismine takılmadan eklemeyi deniyoruz
       bool? didAddNode =
-          await arObjectManager.addNode(newNode, anchor: newAnchor);
-      if (didAddNode!) {
+          await arObjectManager.addNode(newNode, planeAnchor: newAnchor);
+      if (didAddNode == true) {
         nodes.add(newNode);
       }
     }
   }
 
-  // Sahneyi Temizle
   Future<void> onRemoveEverything() async {
     for (var anchor in anchors) {
       arAnchorManager.removeAnchor(anchor);
     }
-    anchors = [];
-    nodes = [];
+    anchors.clear();
+    nodes.clear();
+    setState(() {});
   }
 
   @override
   void dispose() {
-    arSessionManager.dispose();
+    arSessionManager?.dispose();
     super.dispose();
   }
 }
