@@ -25,7 +25,7 @@ workflows:
 
       - name: iOS Build
         script: |
-          flutter build ios --release --no-codesign
+          flutter build ios --release --no-codesign --simulator
 
     artifacts:
       - build/ios/iphoneos/*.app
