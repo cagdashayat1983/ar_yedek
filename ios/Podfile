@@ -1,19 +1,22 @@
+# 1. Flutter yardımcı scriptini yükle (Hata bu satırın eksik olmasındandı)
+load File.join(File.dirname(File.realpath(__FILE__)), 'Flutter', 'podhelper.rb')
+
 platform :ios, '13.0'
 
 target 'Runner' do
   use_frameworks!
-  # Hatalı olan 'use_native_modules!' satırı silindi.
-
+  # Flutter'ın yerel modüllerini projeye bağla
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
   post_install do |installer|
     installer.pods_project.targets.each do |target|
+      # Flutter'ın ek yapılandırmalarını uygula
       flutter_additional_ios_build_settings(target)
       
       target.build_configurations.each do |config|
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
           '$(inherited)',
-          # PERMISSION_HANDLER İÇİN KAMERA VE GALERİ İZİNLERİ:
+          # PERMISSION_HANDLER İZİNLERİ:
           'PERMISSION_CAMERA=1',
           'PERMISSION_MICROPHONE=1',
           'PERMISSION_PHOTOS=1',
