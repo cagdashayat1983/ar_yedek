@@ -1,115 +1,101 @@
 import 'package:flutter/material.dart';
-import 'package:ar_flutter_plugin/ar_flutter_plugin.dart';
-import 'package:ar_flutter_plugin/datatypes/config_planedetection.dart';
-import 'package:ar_flutter_plugin/datatypes/node_types.dart';
-import 'package:ar_flutter_plugin/managers/ar_anchor_manager.dart';
-import 'package:ar_flutter_plugin/managers/ar_location_manager.dart';
-import 'package:ar_flutter_plugin/managers/ar_object_manager.dart';
-import 'package:ar_flutter_plugin/managers/ar_session_manager.dart';
-import 'package:ar_flutter_plugin/models/ar_node.dart';
-import 'package:ar_flutter_plugin/models/ar_anchor.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:vector_math/vector_math_64.dart' as vector;
+import 'package:camera/camera.dart';
+import 'package:permission_handler/permission_handler.dart';
 
-void main() {
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: HizliARResim(),
-  ));
+// Kameralara her yerden erişebilmek için global bir liste
+List<CameraDescription> cameras = [];
+
+void main() async {
+  // 1. Flutter motorunun hazır olduğundan emin ol
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    // 2. iOS Gizlilik İzinlerini Sırayla İste (Codemagic ve Podfile ayarlarıyla eşleşir)
+    // Bu kısım o beklediğin izin kutucuklarını ekrana getirir
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.camera,
+      Permission.microphone,
+      Permission.photos,
+    ].request();
+
+    // İzinlerin durumunu konsola yazdır (Debug için)
+    statuses.forEach((permission, status) {
+      print('${permission.toString()}: $status');
+    });
+
+    // 3. Mevcut kameraları listele
+    cameras = await availableCameras();
+    print("Sistemde bulunan kamera sayısı: ${cameras.length}");
+  } catch (e) {
+    print("Başlatma sırasında bir hata oluştu: $e");
+  }
+
+  runApp(const HizliTasarimApp());
 }
 
-class HizliARResim extends StatefulWidget {
-  const HizliARResim({super.key});
-
-  @override
-  State<HizliARResim> createState() => _HizliARResimState();
-}
-
-class _HizliARResimState extends State<HizliARResim> {
-  ARSessionManager? arSessionManager;
-  ARObjectManager? arObjectManager;
-  ARAnchorManager? arAnchorManager;
+class HizliTasarimApp extends StatelessWidget {
+  const HizliTasarimApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Hızlı Tasarım AR (Resim)')),
-      body: Stack(
-        children: [
-          ARView(
-            onARViewCreated: onARViewCreated,
-            planeDetectionConfig: PlaneDetectionConfig.horizontalAndVertical,
-          ),
-          Positioned(
-            bottom: 30,
-            left: 20,
-            right: 20,
-            child: Container(
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.7),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: const Text(
-                "Masayı tara, mavi çizgiler çıkınca dokun ve resmini seç!",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontSize: 14),
-              ),
-            ),
-          ),
-        ],
+    return MaterialApp(
+      title: 'Hizli Tasarim AR',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
       ),
+      home: const ARHomePage(),
     );
   }
+}
 
-  void onARViewCreated(
-      ARSessionManager arSessionManager,
-      ARObjectManager arObjectManager,
-      ARAnchorManager arAnchorManager,
-      ARLocationManager arLocationManager) {
-    this.arSessionManager = arSessionManager;
-    this.arObjectManager = arObjectManager;
-    this.arAnchorManager = arAnchorManager;
-
-    this.arSessionManager!.onInitialize(
-          showFeaturePoints: true,
-          showPlanes: true,
-          showWorldOrigin: false,
-        );
-    this.arObjectManager!.onInitialize();
-
-    this.arSessionManager!.onPlaneOrPointTap = (hitTestResults) async {
-      if (hitTestResults.isEmpty) return;
-
-      final singleHitTestResult = hitTestResults.first;
-      final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-
-      if (image != null &&
-          this.arAnchorManager != null &&
-          this.arObjectManager != null) {
-        var newAnchor =
-            ARPlaneAnchor(transformation: singleHitTestResult.worldTransform);
-        bool? didAddAnchor = await this.arAnchorManager!.addAnchor(newAnchor);
-
-        if (didAddAnchor == true) {
-          // DÜZELTİLEN SATIR: localGLB yerine fileSystemAppFolderGLB kullanıldı
-          var newNode = ARNode(
-            type: NodeType.fileSystemAppFolderGLB,
-            uri: image.path,
-            scale: vector.Vector3(0.1, 0.1, 0.1),
-            position: vector.Vector3(0, 0, 0),
-          );
-
-          await this.arObjectManager!.addNode(newNode, planeAnchor: newAnchor);
-        }
-      }
-    };
-  }
+class ARHomePage extends StatefulWidget {
+  const ARHomePage({super.key});
 
   @override
-  void dispose() {
-    arSessionManager?.dispose();
-    super.dispose();
+  State<ARHomePage> createState() => _ARHomePageState();
+}
+
+class _ARHomePageState extends State<ARHomePage> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Hizli Tasarim AR"),
+        centerTitle: true,
+      ),
+      body: Center(
+        child: cameras.isEmpty
+            ? const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.camera_rear_outlined, size: 64, color: Colors.red),
+                  SizedBox(height: 16),
+                  Text(
+                    "Kamera algılanamadı!\nLütfen izinleri ve bağlantıyı kontrol edin.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ],
+              )
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.check_circle, size: 64, color: Colors.green),
+                  const SizedBox(height: 16),
+                  Text("${cameras.length} adet kamera hazır."),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () {
+                      // Buradan AR Çizim ekranına yönlendirme yapabilirsin
+                      print("AR Deneyimi Başlatılıyor...");
+                    },
+                    child: const Text("AR Çizimi Başlat"),
+                  ),
+                ],
+              ),
+      ),
+    );
   }
 }
