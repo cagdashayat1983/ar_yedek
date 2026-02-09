@@ -1,6 +1,6 @@
 workflows:
   ios-build:
-    name: Flutter iOS Build
+    name: Flutter iOS Simulator Build
     max_build_duration: 60
     instance_type: mac_mini_m1
 
@@ -8,24 +8,29 @@ workflows:
       flutter: stable
       xcode: latest
 
+    cache:
+      cache_paths:
+        - ~/.pub-cache
+        - ios/Pods
+
     scripts:
-      - name: Flutter Setup
+      - name: Flutter Clean Install
         script: |
           flutter clean
+          rm -rf ios/Pods
+          rm -rf ios/Podfile.lock
           flutter pub get
 
-      - name: Pod Reset
+      - name: Pod Install Fresh
         script: |
           cd ios
-          rm -rf Pods
-          rm -rf Podfile.lock
           pod deintegrate
           pod install --repo-update
           cd ..
 
-      - name: iOS Simulator Build (NO SIGN)
+      - name: Build iOS Simulator (NO SIGNING)
         script: |
-          flutter build ios --simulator --debug
+          flutter build ios --debug --simulator --no-codesign
 
     artifacts:
       - build/ios/iphonesimulator/*.app
