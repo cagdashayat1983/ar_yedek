@@ -1,30 +1,20 @@
-# 1. Flutter yardımcı scriptini yükle
-load File.join(File.dirname(File.realpath(__FILE__)), 'Flutter', 'podhelper.rb')
-
-platform :ios, '13.0'
-
-target 'Runner' do
-  use_frameworks! 
-
-  # Flutter paketlerini (ar_flutter_plugin dahil) projeye bağla
-  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
-
-  post_install do |installer|
-    installer.pods_project.targets.each do |target|
-      flutter_additional_ios_build_settings(target)
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+    
+    target.build_configurations.each do |config|
+      # İmzalama gereksinimini Codemagic build aşamasında devre dışı bırakır
+      config.build_settings['EXPANDED_CODE_SIGN_STYLE'] = 'Manual'
+      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       
-      target.build_configurations.each do |config|
-        # AR ve İzin Ayarları
-        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
-          '$(inherited)',
-          'PERMISSION_CAMERA=1',
-          'PERMISSION_MICROPHONE=1',
-          'PERMISSION_PHOTOS=1',
-        ]
-        
-        # ARKit ve bazı pluginler için Bitcode kapatılmalıdır
-        config.build_settings['ENABLE_BITCODE'] = 'NO'
-      end
+      # Önceki eklediğimiz izin tanımları burada kalsın
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
+        '$(inherited)',
+        'PERMISSION_CAMERA=1',
+        'PERMISSION_MICROPHONE=1',
+        'PERMISSION_PHOTOS=1',
+      ]
     end
   end
 end
