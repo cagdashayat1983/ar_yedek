@@ -2,6 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSCameraUsageDescription</key>
+    <string>Uygulamanın AR (Artırılmış Gerçeklik) deneyimi sunabilmesi için kamera erişimi gereklidir.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Galerinizden resim seçip AR dünyasına ekleyebilmeniz için fotoğraf kütüphanesi erişimi gereklidir.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>AR görüntülerini galerinize kaydedebilmek için izin gereklidir.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>AR deneyimi sırasında ses kaydı gerekebileceği için mikrofon erişimi gereklidir.</string>
+
+    <key>io.flutter.embedded_views_preview</key>
+    <true/>
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>arm64</string>
+        <string>arkit</string>
+    </array>
+
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
@@ -28,34 +45,9 @@
     <string>LaunchScreen</string>
     <key>UIMainStoryboardFile</key>
     <string>Main</string>
-
-    <key>NSCameraUsageDescription</key>
-    <string>Uygulamanın AR (Artırılmış Gerçeklik) deneyimi sunabilmesi için kamera erişimi gereklidir.</string>
-    <key>NSPhotoLibraryUsageDescription</key>
-    <string>Galerinizden resim seçip AR dünyasına ekleyebilmeniz için fotoğraf kütüphanesi erişimi gereklidir.</string>
-    <key>NSPhotoLibraryAddUsageDescription</key>
-    <string>AR görüntülerini galerinize kaydedebilmek için izin gereklidir.</string>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>AR deneyimi sırasında ses kaydı gerekebileceği için mikrofon erişimi gereklidir.</string>
-
-    <key>io.flutter.embedded_views_preview</key>
-    <true/>
-    <key>UIRequiredDeviceCapabilities</key>
-    <array>
-        <string>arm64</string>
-        <string>arkit</string>
-    </array>
-
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
-    </array>
-    <key>UISupportedInterfaceOrientations~ipad</key>
-    <array>
-        <string>UIInterfaceOrientationPortrait</string>
-        <string>UIInterfaceOrientationPortraitUpsideDown</string>
-        <string>UIInterfaceOrientationLandscapeLeft</string>
-        <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
