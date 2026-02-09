@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>NSCameraUsageDescription</key>
-    <string>Uygulamanın AR (Artırılmış Gerçeklik) deneyimi sunabilmesi ve nesneleri masaya yerleştirebilmesi için kamera erişimi gereklidir.</string>
+    <string>Uygulamanın AR (Artırılmış Gerçeklik) deneyimi sunabilmesi için kamera erişimi gereklidir.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Galerinizden resim seçip AR dünyasına ekleyebilmeniz için fotoğraf kütüphanesi erişimi gereklidir.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
@@ -11,6 +11,11 @@
 
     <key>io.flutter.embedded_views_preview</key>
     <true/>
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>armv7</string>
+        <string>arkit</string>
+    </array>
 
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
