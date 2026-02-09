@@ -17,7 +17,7 @@ dependencies:
   wakelock_plus: ^1.1.0
 
   # ✅ Kamera ve Kayıt (AR ile uyumlu sürüm)
-  permission_handler: ^10.4.5
+  permission_handler: ^8.3.0
   camera: ^0.10.5+9
   shared_preferences: ^2.2.2
 
