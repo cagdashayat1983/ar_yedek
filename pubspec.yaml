@@ -1,0 +1,42 @@
+name: flutter_application_1
+description: "Hizli Tasarim Modu"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ✅ Tasarım ve Arayüz
+  device_preview: ^1.1.0
+  flutter_staggered_grid_view: ^0.7.0
+  google_fonts: ^6.1.0
+  wakelock_plus: ^1.1.0
+
+  # ✅ Kamera ve Kayıt
+  camera: ^0.10.5+9           # Kamera erişimi
+  permission_handler: ^11.3.0 # İzin istemek için
+  shared_preferences: ^2.2.2  # Ayarları kaydetmek için
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    # 👇 Sadece Kategoriler ve Şablonlar (ESKİ SİSTEM)
+    - assets/categories/
+    - assets/templates/animals/
+    - assets/templates/cars/
+    - assets/templates/anime/
+    - assets/templates/cartoon/
+    - assets/templates/flowers/
+    - assets/templates/human/
+    - assets/templates/nature/
+
+    - assets/tutorial/
