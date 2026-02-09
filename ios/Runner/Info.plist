@@ -8,6 +8,8 @@
     <string>Galerinizden resim seçip AR dünyasına ekleyebilmeniz için fotoğraf kütüphanesi erişimi gereklidir.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>AR görüntülerini galerinize kaydedebilmek için izin gereklidir.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>AR deneyimi sırasında ses kaydı gerekebileceği için mikrofon erişimi gereklidir.</string>
 
     <key>io.flutter.embedded_views_preview</key>
     <true/>
@@ -43,6 +45,7 @@
     <string>LaunchScreen</string>
     <key>UIMainStoryboardFile</key>
     <string>Main</string>
+    
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
@@ -54,6 +57,7 @@
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
+    
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
     <key>UIApplicationSupportsIndirectInputEvents</key>
