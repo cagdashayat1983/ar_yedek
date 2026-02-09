@@ -1,11 +1,12 @@
-load File.join(File.dirname(File.realpath(__FILE__)), 'Flutter', 'podhelper.rb')
+# Flutter scriptini en sade yolla yükle
+load File.join(File.dirname(__FILE__), 'Flutter', 'podhelper.rb')
 
 platform :ios, '13.0'
 
 target 'Runner' do
   use_frameworks!
   
-  # Flutter paketlerini projeye dahil et
+  # Paketleri yükle
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
   post_install do |installer|
