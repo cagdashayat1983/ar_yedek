@@ -9,7 +9,8 @@
     <key>CFBundleExecutable</key>
     <string>Runner</string>
     <key>CFBundleIdentifier</key>
-    <string>com.hayatify.hizlitasarim</string> <key>CFBundleInfoDictionaryVersion</key>
+    <string>com.hayatify.hizlitasarim</string>
+    <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
     <string>hizli_tasarim</string>
@@ -36,9 +37,13 @@
     <string>AR görüntülerini galerinize kaydedebilmek için izin gereklidir.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>AR deneyimi sırasında ses kaydı gerekebileceği için mikrofon erişimi gereklidir.</string>
+    
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>AR objelerinin doğru yerleşimi ve zemin algılama için konum izni gereklidir.</string>
 
     <key>io.flutter.embedded_views_preview</key>
     <true/>
+    
     <key>UIRequiredDeviceCapabilities</key>
     <array>
         <string>arm64</string>

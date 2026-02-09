@@ -1,6 +1,6 @@
 workflows:
   ios-build:
-    name: iOS Physical Device NO SIGN Build
+    name: iOS Physical Device RELEASE Build
     max_build_duration: 30
     instance_type: mac_mini_m1
 
@@ -16,8 +16,8 @@ workflows:
 
       - name: Build iOS for Real Device
         script: |
-          # --simulator kaldırıldı, gerçek cihaz (iphoneos) mimarisi hedeflendi
-          flutter build ios --debug --no-codesign --no-pub
+          # --release moduna geçtik. Bu sayede uygulama telefonunda takılmadan çalışır.
+          flutter build ios --release --no-codesign --no-pub
 
     artifacts:
       - build/ios/iphoneos/*.app
