@@ -1,46 +1,34 @@
-# 1. Flutter yardımcı scriptini yükle
+# Flutter pod helper
 load File.join(File.dirname(__FILE__), 'Flutter', 'podhelper.rb')
 
 platform :ios, '13.0'
 project 'Runner'
 
 target 'Runner' do
-  use_frameworks!
-  
+  # Flutter + CI için en stabil ayar
+  use_frameworks! :linkage => :static
+  use_modular_headers!
+
   # Flutter paketlerini yükle
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
   post_install do |installer|
     installer.pods_project.targets.each do |target|
       flutter_additional_ios_build_settings(target)
-      
+
       target.build_configurations.each do |config|
-        # 1. Pods tarafında imzalamayı kapat
+        # Pods tarafında codesign kapalı (CI için)
         config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
         config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-        
-        # 2. Kamera ve AR izinlerini ekle
+
+        # Permission handler izinleri
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
           '$(inherited)',
           'PERMISSION_CAMERA=1',
           'PERMISSION_MICROPHONE=1',
-          'PERMISSION_PHOTOS=1',
+          'PERMISSION_PHOTOS=1'
         ]
       end
-    end
-
-    # --- KRİTİK KISIM: ANA PROJEYİ OTOMATİK TAMİR ET ---
-    project_path = 'Runner.xcodeproj/project.pbxproj'
-    if File.exist?(project_path)
-      puts "Codemagic için imza kilitleri sökülüyor..."
-      content = File.read(project_path)
-      # Takım ID'lerini sil
-      content.gsub!(/DEVELOPMENT_TEAM = [^;]+;/, 'DEVELOPMENT_TEAM = "";')
-      # Otomatik imzalamayı Manuel yap
-      content.gsub!(/CODE_SIGN_STYLE = [^;]+;/, 'CODE_SIGN_STYLE = Manual;')
-      # Provisioning profilini temizle
-      content.gsub!(/PROVISIONING_PROFILE_SPECIFIER = [^;]+;/, 'PROVISIONING_PROFILE_SPECIFIER = "";')
-      File.write(project_path, content)
     end
   end
 end
