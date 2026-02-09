@@ -1,31 +1,13 @@
-# Flutter scriptini yükle
+# 1. Flutter yardımcı scriptini yükle
 load File.join(File.dirname(__FILE__), 'Flutter', 'podhelper.rb')
 
 platform :ios, '13.0'
 project 'Runner'
 
-# --- CODEMAGIC İMZA TEMİZLEME SİHİRBAZI ---
-def fix_xcode_project_for_sideload
-  project_path = 'Runner.xcodeproj/project.pbxproj'
-  return unless File.exist?(project_path)
-  
-  puts "Sideloading hazırlığı: Projedeki imza zorunlulukları temizleniyor..."
-  content = File.read(project_path)
-  
-  # Otomatik imzalamayı kapat ve Takım ID'lerini temizle
-  content.gsub!(/DEVELOPMENT_TEAM = [^;]+;/, 'DEVELOPMENT_TEAM = "";')
-  content.gsub!(/ProvisioningStyle = Automatic;/, 'ProvisioningStyle = Manual;')
-  
-  File.write(project_path, content)
-end
-
-# İşlemi başlat
-fix_xcode_project_for_sideload
-# ------------------------------------------
-
 target 'Runner' do
   use_frameworks!
   
+  # Flutter paketlerini yükle
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
   post_install do |installer|
@@ -33,13 +15,11 @@ target 'Runner' do
       flutter_additional_ios_build_settings(target)
       
       target.build_configurations.each do |config|
-        # Tüm hedefler için imza kontrolünü devre dışı bırak
+        # 1. Pods tarafında imzalamayı kapat
         config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
         config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-        config.build_settings['EXPANDED_CODE_SIGN_STYLE'] = 'Manual'
-        config.build_settings['DEVELOPMENT_TEAM'] = ''
         
-        # Kamera ve AR İzinleri
+        # 2. Kamera ve AR izinlerini ekle
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
           '$(inherited)',
           'PERMISSION_CAMERA=1',
@@ -47,6 +27,20 @@ target 'Runner' do
           'PERMISSION_PHOTOS=1',
         ]
       end
+    end
+
+    # --- KRİTİK KISIM: ANA PROJEYİ OTOMATİK TAMİR ET ---
+    project_path = 'Runner.xcodeproj/project.pbxproj'
+    if File.exist?(project_path)
+      puts "Codemagic için imza kilitleri sökülüyor..."
+      content = File.read(project_path)
+      # Takım ID'lerini sil
+      content.gsub!(/DEVELOPMENT_TEAM = [^;]+;/, 'DEVELOPMENT_TEAM = "";')
+      # Otomatik imzalamayı Manuel yap
+      content.gsub!(/CODE_SIGN_STYLE = [^;]+;/, 'CODE_SIGN_STYLE = Manual;')
+      # Provisioning profilini temizle
+      content.gsub!(/PROVISIONING_PROFILE_SPECIFIER = [^;]+;/, 'PROVISIONING_PROFILE_SPECIFIER = "";')
+      File.write(project_path, content)
     end
   end
 end
