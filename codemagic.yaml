@@ -1,0 +1,31 @@
+workflows:
+  ios-build:
+    name: Flutter iOS Build
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+
+    environment:
+      flutter: stable
+      xcode: latest
+
+    scripts:
+      - name: Flutter Setup
+        script: |
+          flutter clean
+          flutter pub get
+
+      - name: Pod Reset (AR + Camera Safe)
+        script: |
+          cd ios
+          rm -rf Pods
+          rm -rf Podfile.lock
+          pod deintegrate
+          pod install --repo-update
+          cd ..
+
+      - name: iOS Build
+        script: |
+          flutter build ios --release --no-codesign
+
+    artifacts:
+      - build/ios/iphoneos/*.app
