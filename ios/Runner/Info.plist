@@ -6,6 +6,11 @@
     <string>Uygulamanın AR (Artırılmış Gerçeklik) deneyimi sunabilmesi ve nesneleri masaya yerleştirebilmesi için kamera erişimi gereklidir.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Galerinizden resim seçip AR dünyasına ekleyebilmeniz için fotoğraf kütüphanesi erişimi gereklidir.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>AR görüntülerini galerinize kaydedebilmek için izin gereklidir.</string>
+
+    <key>io.flutter.embedded_views_preview</key>
+    <true/>
 
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
@@ -36,8 +41,6 @@
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
-        <string>UIInterfaceOrientationLandscapeLeft</string>
-        <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
     <key>UISupportedInterfaceOrientations~ipad</key>
     <array>
