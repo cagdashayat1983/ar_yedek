@@ -16,10 +16,15 @@ dependencies:
   google_fonts: ^6.1.0
   wakelock_plus: ^1.1.0
 
-  # ✅ Kamera ve Kayıt
-  camera: ^0.10.5+9           # Kamera erişimi
-  permission_handler: ^11.3.0 # İzin istemek için
-  shared_preferences: ^2.2.2  # Ayarları kaydetmek için
+  # ✅ Kamera ve Kayıt (AR ile uyumlu sürüm)
+  permission_handler: ^10.4.5
+  camera: ^0.10.5+9
+  shared_preferences: ^2.2.2
+
+  # 🚀 AR ve Resim Seçme
+  ar_flutter_plugin: ^0.7.3
+  image_picker: ^1.0.7
+  vector_math: ^2.1.4
 
 dev_dependencies:
   flutter_test:
@@ -29,7 +34,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    # 👇 Sadece Kategoriler ve Şablonlar (ESKİ SİSTEM)
     - assets/categories/
     - assets/templates/animals/
     - assets/templates/cars/
@@ -38,5 +42,4 @@ flutter:
     - assets/templates/flowers/
     - assets/templates/human/
     - assets/templates/nature/
-
     - assets/tutorial/
