@@ -1,7 +1,7 @@
 workflows:
   ios-build:
-    name: iOS Simulator NO SIGN Build
-    max_build_duration: 60
+    name: iOS Physical Device NO SIGN Build
+    max_build_duration: 30
     instance_type: mac_mini_m1
 
     environment:
@@ -14,9 +14,10 @@ workflows:
           flutter clean
           flutter pub get
 
-      - name: Build iOS Simulator ONLY
+      - name: Build iOS for Real Device
         script: |
-          flutter build ios --simulator --debug --no-codesign
+          # --simulator kaldırıldı, gerçek cihaz (iphoneos) mimarisi hedeflendi
+          flutter build ios --debug --no-codesign --no-pub
 
     artifacts:
-      - build/ios/iphonesimulator/*.app
+      - build/ios/iphoneos/*.app
