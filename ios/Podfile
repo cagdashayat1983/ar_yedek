@@ -1,13 +1,11 @@
-# Flutter yardımcı scriptini yükle
 load File.join(File.dirname(File.realpath(__FILE__)), 'Flutter', 'podhelper.rb')
 
-platform :ios, '13.0' # ARKit için en az 13.0 şart
+platform :ios, '13.0'
 
 target 'Runner' do
   use_frameworks!
-  use_native_modules!
-
-  # Flutter paketlerini bağla
+  
+  # Flutter paketlerini projeye dahil et
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
   post_install do |installer|
@@ -17,7 +15,6 @@ target 'Runner' do
       target.build_configurations.each do |config|
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
           '$(inherited)',
-          # PERMISSION_HANDLER İZİNLERİ
           'PERMISSION_CAMERA=1',
           'PERMISSION_MICROPHONE=1',
           'PERMISSION_PHOTOS=1',
