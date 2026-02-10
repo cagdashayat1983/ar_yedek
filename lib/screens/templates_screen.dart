@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // AssetManifest için
-import 'package:shared_preferences/shared_preferences.dart'; // Kayıt işlemleri
-import 'package:camera/camera.dart'; // 📸 KAMERA KÜTÜPHANESİ
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import '../models/category_model.dart';
-import 'drawing_screen.dart';
+import '../ar_screen.dart';
 import 'subscription_screen.dart';
 import 'profile_screen.dart';
 
@@ -12,487 +12,408 @@ import 'profile_screen.dart';
 class DesignItem {
   final String path;
   int likes;
-  int saves;
   bool isLiked;
   bool isSaved;
-  final DateTime date;
-  final bool isPremium;
+  bool isPremium;
 
   DesignItem({
     required this.path,
-    required this.likes,
-    required this.saves,
+    this.likes = 0,
     this.isLiked = false,
     this.isSaved = false,
-    required this.date,
-    required this.isPremium,
+    this.isPremium = false,
   });
 }
 
 class TemplatesScreen extends StatefulWidget {
   final CategoryModel category;
-  final List<CameraDescription> cameras;
 
   const TemplatesScreen({
-    super.key,
+    Key? key,
     required this.category,
-    required this.cameras,
-  });
+  }) : super(key: key);
 
   @override
   State<TemplatesScreen> createState() => _TemplatesScreenState();
 }
 
 class _TemplatesScreenState extends State<TemplatesScreen> {
-  List<DesignItem> _allDesignsSource = [];
-  List<DesignItem> _filteredFullList = [];
-  List<DesignItem> _displayedDesigns = [];
+  late SharedPreferences _prefs;
 
-  bool _isInitialLoading = true;
+  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+
+  bool _isLoading = true;
   bool _isLoadingMore = false;
   bool _isProUser = false;
-  String _searchQuery = "";
-  String _selectedFilter = "Yeniler";
 
   int _selectedIndex = 0;
-  int _currentLoadedCount = 0;
-  static const int _loadIncrement = 12;
-  late ScrollController _scrollController;
-  late SharedPreferences _prefs;
+  int _pageSize = 18;
+  int _currentPage = 1;
+
+  List<DesignItem> _allDesignsSource = [];
+  List<DesignItem> _filteredDesigns = [];
 
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController()..addListener(_scrollListener);
     _initData();
+    _scrollController.addListener(_onScroll);
+    _searchController.addListener(_applyFilters);
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  void _scrollListener() {
-    if (!_scrollController.hasClients) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 300) {
-      if (!_isLoadingMore &&
-          _displayedDesigns.length < _filteredFullList.length) {
-        _loadMoreData();
-      }
-    }
+  Future<void> _initData() async {
+    setState(() => _isLoading = true);
+    _prefs = await SharedPreferences.getInstance();
+    _isProUser = _prefs.getBool('is_pro_user') ?? false;
+
+    await _loadDesignsFromAssets();
+    _applyFilters();
+
+    if (mounted) setState(() => _isLoading = false);
   }
 
-  Future<void> _initData() async {
-    _prefs = await SharedPreferences.getInstance();
-    if (mounted) {
-      setState(() => _isProUser = _prefs.getBool('is_pro_user') ?? false);
-    }
+  Future<void> _loadDesignsFromAssets() async {
+    final manifest = await AssetManifest.loadFromAssetBundle(
+      DefaultAssetBundle.of(context),
+    );
 
-    final manifest =
-        await AssetManifest.loadFromAssetBundle(DefaultAssetBundle.of(context));
-
-    final String searchPath = "assets/templates/${widget.category.id}";
+    final searchPath = "assets/templates/${widget.category.id}";
 
     final paths =
         manifest.listAssets().where((k) => k.contains(searchPath)).where((k) {
       final lower = k.toLowerCase();
-      return lower.endsWith('.png') ||
-          lower.endsWith('.jpg') ||
-          lower.endsWith('.webp');
+      return lower.endsWith('.webp') ||
+          lower.endsWith('.png') ||
+          lower.endsWith('.jpg');
     }).toList();
 
     _allDesignsSource = paths.map((p) {
-      bool liked = _prefs.getBool('liked_$p') ?? false;
-      bool saved = _prefs.getBool('saved_$p') ?? false;
-      int savedLikes =
-          _prefs.getInt('count_like_$p') ?? ((p.hashCode % 150) + 10);
-      int savedSaves =
-          _prefs.getInt('count_save_$p') ?? ((p.hashCode % 80) + 5);
-      bool isPro = p.toLowerCase().contains('pro');
+      final liked = _prefs.getBool('liked_$p') ?? false;
+      final saved = _prefs.getBool('saved_$p') ?? false;
+      final savedLikes = _prefs.getInt('likes_$p') ?? 0;
+
+      final index = paths.indexOf(p);
+      final isPremium = index >= 6;
 
       return DesignItem(
         path: p,
         likes: savedLikes,
-        saves: savedSaves,
         isLiked: liked,
         isSaved: saved,
-        date: DateTime.now().subtract(Duration(days: p.length % 30)),
-        isPremium: isPro,
+        isPremium: isPremium,
       );
     }).toList();
 
-    _applyFilters(isReset: true);
+    _currentPage = 1;
+    _filteredDesigns = _allDesignsSource.take(_pageSize).toList();
   }
 
-  Future<void> _toggleInteraction(DesignItem item, String type) async {
+  void _applyFilters() {
+    final query = _searchController.text.trim().toLowerCase();
+
+    final filtered = _allDesignsSource.where((d) {
+      if (query.isEmpty) return true;
+      return d.path.toLowerCase().contains(query);
+    }).toList();
+
+    final maxItems = _currentPage * _pageSize;
     setState(() {
-      if (type == 'like') {
-        item.isLiked = !item.isLiked;
-        item.likes += item.isLiked ? 1 : -1;
-        _prefs.setBool('liked_${item.path}', item.isLiked);
-        _prefs.setInt('count_like_${item.path}', item.likes);
-      } else {
-        item.isSaved = !item.isSaved;
-        item.saves += item.isSaved ? 1 : -1;
-        _prefs.setBool('saved_${item.path}', item.isSaved);
-        _prefs.setInt('count_save_${item.path}', item.saves);
-      }
+      _filteredDesigns = filtered.take(maxItems).toList();
     });
   }
 
-  void _applyFilters({bool isReset = false}) {
-    if (!mounted) return;
-    setState(() {
-      if (isReset) _isInitialLoading = true;
-
-      var temp = _allDesignsSource
-          .where(
-              (d) => d.path.toLowerCase().contains(_searchQuery.toLowerCase()))
-          .toList();
-
-      temp.sort((a, b) {
-        if (a.isPremium != b.isPremium) {
-          return a.isPremium ? 1 : -1;
-        }
-        switch (_selectedFilter) {
-          case "En Çok Sevilen":
-            return b.likes.compareTo(a.likes);
-          case "En Çok Kayıt Edilen":
-            return b.saves.compareTo(a.saves);
-          default:
-            return b.date.compareTo(a.date);
-        }
-      });
-
-      _filteredFullList = temp;
-
-      if (isReset) {
-        _currentLoadedCount = 0;
-        _displayedDesigns = [];
-        _loadNextBatch();
-        _isInitialLoading = false;
-        if (_scrollController.hasClients) _scrollController.jumpTo(0);
-      }
-    });
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMore &&
+        !_isLoading) {
+      _loadMore();
+    }
   }
 
-  void _loadNextBatch() {
-    final end = (_currentLoadedCount + _loadIncrement)
-        .clamp(0, _filteredFullList.length);
-    final nextBatch =
-        _filteredFullList.getRange(_currentLoadedCount, end).toList();
-    setState(() {
-      _displayedDesigns.addAll(nextBatch);
-      _currentLoadedCount = end;
-    });
-  }
-
-  Future<void> _loadMoreData() async {
-    if (_isLoadingMore) return;
+  Future<void> _loadMore() async {
     setState(() => _isLoadingMore = true);
-    await Future.delayed(const Duration(milliseconds: 300));
-    _loadNextBatch();
+    await Future.delayed(const Duration(milliseconds: 250));
+    _currentPage++;
+    _applyFilters();
     if (mounted) setState(() => _isLoadingMore = false);
   }
 
-  // ✅ GÜNCEL NAVİGASYON (PRO ALTA EKLENDİ)
   void _onBottomNavTapped(int index) {
     if (index == 3) {
-      // 3 Numara = Hesabım
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const ProfileScreen()),
+        MaterialPageRoute(builder: (_) => const ProfileScreen()),
       ).then((_) => _initData());
     } else if (index == 2) {
-      // ✅ 2 Numara = PRO (Buraya taşındı)
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const SubscriptionScreen()),
+        MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
       ).then((_) => _initData());
-    } else if (index == 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text("Video eğitimleri çok yakında!"),
-          backgroundColor: widget.category.color,
-        ),
-      );
-      setState(() => _selectedIndex = index);
     } else {
       setState(() => _selectedIndex = index);
     }
   }
 
+  Color get themeColor => widget.category.color;
+
   @override
   Widget build(BuildContext context) {
-    final Color themeColor = widget.category.color;
+    const bg = Color(0xFFF7F8FA);
 
     return Scaffold(
-      backgroundColor: Colors.white,
-
-      // ❌ Sol alttaki FAB (Yuvarlak buton) kaldırıldı.
-
+      backgroundColor: bg,
       appBar: AppBar(
-        title: Text("${widget.category.title} (${_allDesignsSource.length})",
-            style: const TextStyle(
-                fontWeight: FontWeight.w900, color: Colors.black)),
+        backgroundColor: bg,
         elevation: 0,
-        centerTitle: true,
-
-        // ✅ GERİ TUŞU: Buraya manuel olarak eklendi
-        leading: IconButton(
-          icon:
-              const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+        title: Text(
+          widget.category.title,
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w800),
         ),
-
-        iconTheme: const IconThemeData(color: Colors.black),
-
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                themeColor.withOpacity(0.25),
-                Colors.white.withOpacity(0.1),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: "Şablon ara…",
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: GridView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _filteredDesigns.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 0.72,
+                    ),
+                    itemBuilder: (context, i) {
+                      final item = _filteredDesigns[i];
+                      return _DesignCard(
+                        design: item,
+                        themeColor: themeColor,
+                        isLocked: item.isPremium && !_isProUser,
+                        onTap: () {
+                          if (item.isPremium && !_isProUser) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const SubscriptionScreen(),
+                              ),
+                            ).then((_) => _initData());
+                          } else {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ARDrawingScreen(
+                                  selectedCategory: widget.category.title,
+                                  selectedImagePath: item.path,
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                        onLike: () async {
+                          setState(() {
+                            item.isLiked = !item.isLiked;
+                            item.likes += item.isLiked ? 1 : -1;
+                          });
+                          await _prefs.setBool(
+                              'liked_${item.path}', item.isLiked);
+                          await _prefs.setInt('likes_${item.path}', item.likes);
+                        },
+                        onSave: () async {
+                          setState(() => item.isSaved = !item.isSaved);
+                          await _prefs.setBool(
+                              'saved_${item.path}', item.isSaved);
+                        },
+                      );
+                    },
+                  ),
+                ),
+                if (_isLoadingMore)
+                  const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: CircularProgressIndicator(),
+                  ),
               ],
             ),
-          ),
-        ),
-        backgroundColor: Colors.transparent,
-
-        // ❌ Sağ üstteki PRO butonu buradan kaldırıldı.
-      ),
-
-      // ✅ YENİ ALT MENÜ (4 SEÇENEK)
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onBottomNavTapped,
         selectedItemColor: themeColor,
         unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed, // 4 tane olduğu için Fixed şart
+        type: BottomNavigationBarType.fixed,
         showUnselectedLabels: true,
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.grid_view_rounded), label: "Tasarımlar"),
+              icon: Icon(Icons.grid_view_rounded), label: "Şablonlar"),
           BottomNavigationBarItem(
-              icon: Icon(Icons.play_circle_fill), label: "Video"),
-          // ✅ PRO BURAYA GELDİ
+              icon: Icon(Icons.book_rounded), label: "Kayıtlar"),
           BottomNavigationBarItem(
-              icon: Icon(Icons.workspace_premium), label: "PRO"),
+              icon: Icon(Icons.workspace_premium_rounded), label: "PRO"),
           BottomNavigationBarItem(
               icon: Icon(Icons.person_rounded), label: "Hesabım"),
         ],
       ),
-
-      body: _isInitialLoading
-          ? Center(child: CircularProgressIndicator(color: themeColor))
-          : Column(
-              children: [
-                _buildTopBar(themeColor),
-                Expanded(
-                  child: GridView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 24,
-                      crossAxisSpacing: 16,
-                      childAspectRatio: 0.75,
-                    ),
-                    itemCount:
-                        _displayedDesigns.length + (_isLoadingMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index == _displayedDesigns.length && _isLoadingMore) {
-                        return Center(
-                            child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: themeColor)));
-                      }
-
-                      final item = _displayedDesigns[index];
-                      return _DesignCard(
-                        design: item,
-                        themeColor: themeColor,
-                        onTap: () {
-                          if (item.isPremium && !_isProUser) {
-                            Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (c) =>
-                                            const SubscriptionScreen()))
-                                .then((_) => _initData());
-                          } else {
-                            Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (c) => DrawingScreen(
-                                        category: widget.category,
-                                        cameras: widget.cameras,
-                                        imagePath: item.path)));
-                          }
-                        },
-                        onLike: () => _toggleInteraction(item, 'like'),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
-
-  Widget _buildTopBar(Color color) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          child: TextField(
-            onChanged: (v) {
-              _searchQuery = v;
-              _applyFilters(isReset: true);
-            },
-            decoration: InputDecoration(
-              hintText: 'Tasarım ara...',
-              prefixIcon: Icon(Icons.search_rounded, color: color),
-              filled: true,
-              fillColor: const Color(0xFFF5F6FA),
-              contentPadding: EdgeInsets.zero,
-              focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: BorderSide(color: color.withOpacity(0.5))),
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: BorderSide.none),
-            ),
-          ),
-        ),
-        SizedBox(
-          height: 40,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            children: ["Yeniler", "En Çok Sevilen", "En Çok Kayıt Edilen"]
-                .map((filter) {
-              final isSelected = _selectedFilter == filter;
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: ChoiceChip(
-                  label: Text(filter, style: const TextStyle(fontSize: 11)),
-                  selected: isSelected,
-                  onSelected: (s) {
-                    if (s) {
-                      setState(() => _selectedFilter = filter);
-                      _applyFilters(isReset: true);
-                    }
-                  },
-                  selectedColor: color,
-                  backgroundColor: const Color(0xFFF5F6FA),
-                  labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : Colors.black54),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      side: BorderSide.none),
-                  visualDensity: VisualDensity.compact,
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(height: 10),
-      ],
     );
   }
 }
 
 class _DesignCard extends StatelessWidget {
   final DesignItem design;
+  final Color themeColor;
   final VoidCallback onTap;
   final VoidCallback onLike;
-  final Color themeColor;
+  final VoidCallback onSave;
+  final bool isLocked;
 
   const _DesignCard({
     required this.design,
+    required this.themeColor,
     required this.onTap,
     required this.onLike,
-    required this.themeColor,
+    required this.onSave,
+    required this.isLocked,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
           color: Colors.white,
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: themeColor, width: 2.0),
-        ),
-        child: Column(
-          children: [
-            Expanded(
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(10.0),
-                    child: Center(child: Image.asset(design.path)),
-                  ),
-                  if (design.isPremium)
-                    Positioned(
-                      top: 8,
-                      right: 4,
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.95),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(color: Colors.black12, blurRadius: 6)
-                          ],
-                        ),
-                        child: const Icon(Icons.workspace_premium,
-                            color: Colors.amber, size: 28),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 15),
-              child: Center(
-                child: InkWell(
-                  onTap: onLike,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                          design.isLiked
-                              ? Icons.favorite
-                              : Icons.favorite_outline,
-                          color: Colors.redAccent,
-                          size: 32),
-                      const SizedBox(width: 6),
-                      Text(
-                        "${design.likes}",
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            )
           ],
         ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(
+                design.path,
+                fit: BoxFit.cover,
+              ),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 10,
+                child: Row(
+                  children: [
+                    _Pill(
+                      child: Row(
+                        children: [
+                          InkWell(
+                            onTap: onLike,
+                            child: Icon(
+                              design.isLiked
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
+                              size: 18,
+                              color: design.isLiked ? Colors.red : Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            "${design.likes}",
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _Pill(
+                      child: InkWell(
+                        onTap: onSave,
+                        child: Icon(
+                          design.isSaved
+                              ? Icons.bookmark
+                              : Icons.bookmark_border,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    if (isLocked)
+                      _Pill(
+                        child: Row(
+                          children: [
+                            const Icon(Icons.lock_rounded,
+                                color: Colors.white, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              "PRO",
+                              style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  final Widget child;
+  const _Pill({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: child,
     );
   }
 }

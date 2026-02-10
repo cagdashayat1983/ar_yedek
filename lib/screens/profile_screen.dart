@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart'; // AssetManifest için
-import 'package:camera/camera.dart'; // Kamera için
-import '../models/category_model.dart';
-import 'drawing_screen.dart';
+import 'package:flutter/services.dart';
+
+import '../ar_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -22,29 +21,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadLikedImages();
   }
 
-  // 💖 Beğenilen resimleri hafızadan TARAYIP getiren fonksiyon
+  // ❤️ Beğenilen resimleri hafızadan tarayıp getirir
   Future<void> _loadLikedImages() async {
     final prefs = await SharedPreferences.getInstance();
 
     try {
-      // ✅ DÜZELTME BURADA: AssetManifest.json'ı string olarak yüklemeye çalışmayı kaldırdık.
-      // Sadece Flutter'ın kendi güvenli fonksiyonunu kullanıyoruz.
       final manifest = await AssetManifest.loadFromAssetBundle(
-          DefaultAssetBundle.of(context));
+        DefaultAssetBundle.of(context),
+      );
       final allAssets = manifest.listAssets();
 
-      List<String> tempLiked = [];
+      final List<String> tempLiked = [];
 
-      // 2. Her bir resim için "Bunu beğendi mi?" diye hafızaya sor
-      for (String path in allAssets) {
-        // Sadece 'assets/templates' içindekilere bak
-        if (path.contains("assets/templates/")) {
-          // Anahtarlar 'liked_dosyayolu' şeklinde kayıtlı
-          bool isLiked = prefs.getBool('liked_$path') ?? false;
-
-          if (isLiked) {
-            tempLiked.add(path);
-          }
+      for (final path in allAssets) {
+        if (path.contains('assets/templates/')) {
+          final isLiked = prefs.getBool('liked_$path') ?? false;
+          if (isLiked) tempLiked.add(path);
         }
       }
 
@@ -55,10 +47,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Profil Yükleme Hatası: $e");
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      debugPrint("Profil yükleme hatası: $e");
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -67,8 +57,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text("Hesabım",
-            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Hesabım",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -76,7 +68,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: Column(
         children: [
-          // 👤 Profil Kartı
+          // 👤 Profil kartı
           Container(
             padding: const EdgeInsets.all(20),
             color: Colors.white,
@@ -91,11 +83,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
-                    Text("Kullanıcı",
-                        style: TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.bold)),
-                    Text("Favori Koleksiyoncusu",
-                        style: TextStyle(color: Colors.grey, fontSize: 14)),
+                    Text(
+                      "Kullanıcı",
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      "Favori Koleksiyoncusu",
+                      style: TextStyle(color: Colors.grey),
+                    ),
                   ],
                 ),
               ],
@@ -114,15 +112,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(
                   "Beğendiğim Tasarımlar (${_likedImages.length})",
                   style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
           ),
 
-          // 🖼️ Favori Tasarımlar Izgarası
+          // 🖼️ Favoriler grid
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -132,15 +130,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3, // 3 Sütunlu görünüm
+                          crossAxisCount: 3,
                           crossAxisSpacing: 10,
                           mainAxisSpacing: 10,
                           childAspectRatio: 0.8,
                         ),
                         itemCount: _likedImages.length,
-                        itemBuilder: (context, index) {
-                          return _buildLikedItem(_likedImages[index]);
-                        },
+                        itemBuilder: (_, i) => _buildLikedItem(_likedImages[i]),
                       ),
           ),
         ],
@@ -156,8 +152,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Icon(Icons.favorite_border, size: 60, color: Colors.grey.shade300),
           const SizedBox(height: 10),
           Text(
-            "Henüz hiç bir tasarımı beğenmedin.",
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+            "Henüz hiç tasarım beğenmedin.",
+            style: TextStyle(color: Colors.grey.shade500),
           ),
         ],
       ),
@@ -166,31 +162,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildLikedItem(String path) {
     return GestureDetector(
-      onTap: () async {
-        // 📸 Kamera erişimi alıp DrawingScreen'e gönderiyoruz
-        try {
-          final cameras = await availableCameras();
-          if (mounted) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (c) => DrawingScreen(
-                  // Kategoriyi sahte oluşturuyoruz çünkü sadece resim önemli
-                  category: CategoryModel(
-                      id: "fav",
-                      title: "Favorilerim",
-                      color: Colors.redAccent,
-                      isPro: false,
-                      itemCount: 0),
-                  cameras: cameras,
-                  imagePath: path, // ✅ Beğenilen resmi aç
-                ),
-              ),
-            );
-          }
-        } catch (e) {
-          debugPrint("Kamera hatası: $e");
-        }
+      onTap: () {
+        // ✅ Favoriden direkt AR aç
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ARDrawingScreen(
+              selectedCategory: "Favorilerim",
+              selectedImagePath: path,
+            ),
+          ),
+        );
       },
       child: Container(
         decoration: BoxDecoration(
@@ -198,9 +180,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 5,
-                offset: const Offset(0, 2)),
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 5,
+              offset: const Offset(0, 2),
+            ),
           ],
         ),
         child: ClipRRect(

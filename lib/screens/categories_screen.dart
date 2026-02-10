@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import '../models/category_model.dart';
 import 'templates_screen.dart';
 import 'learn_screen.dart';
 import 'profile_screen.dart';
-import 'subscription_screen.dart'; // ✅ Abonelik ekranı eklendi
+import 'subscription_screen.dart';
 
 class CategoriesScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
 
-  const CategoriesScreen({super.key, required this.cameras});
+  const CategoriesScreen({
+    Key? key,
+    required this.cameras,
+  }) : super(key: key);
 
   @override
   State<CategoriesScreen> createState() => _CategoriesScreenState();
@@ -20,77 +24,98 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   int _selectedIndex = 0;
 
   void _onBottomNavTapped(int index) {
-    if (index == 0) {
-      setState(() => _selectedIndex = index);
-    } else if (index == 1) {
+    setState(() => _selectedIndex = index);
+
+    if (index == 1) {
+      // ✅ LearnScreen hâlâ kamera istiyor
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => LearnScreen(cameras: widget.cameras),
+          builder: (_) => LearnScreen(cameras: widget.cameras),
         ),
-      ).then((_) => setState(() => _selectedIndex = 0));
+      );
     } else if (index == 2) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const ProfileScreen()),
-      ).then((_) => setState(() => _selectedIndex = 0));
+        MaterialPageRoute(
+          builder: (_) => const SubscriptionScreen(),
+        ),
+      );
+    } else if (index == 3) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const ProfileScreen(),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    const bgColor = Color(0xFFF7F8FA);
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-
-      // ✅ YENİ: SOL ALTA PRO BUTONU
-      floatingActionButtonLocation:
-          FloatingActionButtonLocation.startFloat, // Sol Alt Konum
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // Abonelik sayfasına git
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const SubscriptionScreen()),
-          );
-        },
-        backgroundColor: Colors.amber[700], // Altın Sarısı
-        icon: const Icon(Icons.workspace_premium, color: Colors.white),
-        label: Text("PRO",
-            style: GoogleFonts.poppins(
-                fontWeight: FontWeight.bold, color: Colors.white)),
-      ),
-
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: bgColor,
         elevation: 0,
-        centerTitle: true,
-        automaticallyImplyLeading: false,
         title: Text(
           "Kategoriler",
           style: GoogleFonts.poppins(
-            color: Colors.black87,
             fontWeight: FontWeight.w800,
-            fontSize: 26,
-            letterSpacing: -0.5,
+            color: Colors.black,
           ),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: GridView.builder(
+          itemCount: categories.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 0.86,
+          ),
+          itemBuilder: (context, index) {
+            final category = categories[index];
+            return _CategoryTile(
+              category: category,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    // ✅ FIX: cameras kaldırıldı
+                    builder: (_) => TemplatesScreen(
+                      category: category,
+                    ),
+                  ),
+                );
+              },
+            );
+          },
         ),
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onBottomNavTapped,
-        selectedItemColor: Colors.black,
-        unselectedItemColor: Colors.grey.shade400,
-        showUnselectedLabels: true,
         type: BottomNavigationBarType.fixed,
-        elevation: 10,
+        selectedItemColor: Colors.black,
+        unselectedItemColor: Colors.grey,
+        showUnselectedLabels: true,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.category_rounded),
+            icon: Icon(Icons.grid_view_rounded),
             label: "Kategoriler",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.school_rounded),
-            label: "Eğitim",
+            label: "Öğren",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.workspace_premium_rounded),
+            label: "PRO",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_rounded),
@@ -98,151 +123,92 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           ),
         ],
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(
-            20, 10, 20, 80), // Fab için alt boşluk arttı
-        itemCount: categories.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 20),
-        itemBuilder: (context, index) {
-          final category = categories[index];
-          return _buildCategoryRow(context, category);
-        },
-      ),
     );
   }
+}
 
-  Widget _buildCategoryRow(BuildContext context, CategoryModel category) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => TemplatesScreen(
-              category: category,
-              cameras: widget.cameras,
-            ),
-          ),
-        );
-      },
+class _CategoryTile extends StatelessWidget {
+  final CategoryModel category;
+  final VoidCallback onTap;
+
+  const _CategoryTile({
+    required this.category,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: onTap,
       child: Container(
-        height: 150,
         decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
           color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: category.color.withOpacity(0.15),
-              blurRadius: 15,
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 16,
               offset: const Offset(0, 8),
-            ),
-            BoxShadow(
-              color: Colors.black.withOpacity(0.02),
-              blurRadius: 5,
-              offset: const Offset(0, 2),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(24),
           child: Stack(
+            fit: StackFit.expand,
             children: [
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        category.color.withOpacity(0.05),
-                        Colors.white,
-                      ],
-                    ),
+              Image.asset(
+                category.coverAsset,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: category.color.withOpacity(0.12),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.image_not_supported_outlined,
+                    size: 40,
                   ),
                 ),
               ),
-              Row(
-                children: [
-                  Container(
-                    width: 140,
-                    height: 150,
-                    decoration: BoxDecoration(
-                      color: category.color.withOpacity(0.1),
-                      borderRadius: const BorderRadius.horizontal(
-                          left: Radius.circular(28)),
-                    ),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Positioned(
-                          right: -20,
-                          bottom: -20,
-                          child: Icon(
-                            Icons.category_outlined,
-                            size: 100,
-                            color: Colors.white.withOpacity(0.3),
-                          ),
-                        ),
-                        Image.asset(
-                          category.imagePath ?? 'assets/placeholder.png',
-                          fit: BoxFit.contain,
-                          scale: 0.7,
-                        ),
-                      ],
-                    ),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.70),
+                    ],
                   ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20.0, vertical: 15),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            category.title,
-                            style: GoogleFonts.poppins(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: category.color.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              "${category.itemCount} Tasarım",
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: category.color,
-                              ),
-                            ),
-                          ),
-                        ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Spacer(),
+                    Text(
+                      category.title,
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
                       ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 20.0),
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: category.color.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.arrow_forward_rounded,
-                        color: category.color,
-                        size: 24,
+                    const SizedBox(height: 2),
+                    Text(
+                      category.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white70,
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
