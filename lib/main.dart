@@ -1,50 +1,170 @@
 import 'package:ar_flutter_plugin/ar_flutter_plugin.dart';
 import 'package:ar_flutter_plugin/datatypes/config_planedetection.dart';
-import 'package:ar_flutter_plugin/datatypes/hittest_result_types.dart';
-import 'package:ar_flutter_plugin/datatypes/node_types.dart';
+import 'package:ar_flutter_plugin/datatypes/hittest_result_types.dart'; // Isim hatasi olmamasi icin
 import 'package:ar_flutter_plugin/managers/ar_anchor_manager.dart';
 import 'package:ar_flutter_plugin/managers/ar_location_manager.dart';
 import 'package:ar_flutter_plugin/managers/ar_object_manager.dart';
 import 'package:ar_flutter_plugin/managers/ar_session_manager.dart';
-import 'package:ar_flutter_plugin/models/ar_anchor.dart';
-import 'package:ar_flutter_plugin/models/ar_node.dart';
 import 'package:flutter/material.dart';
-import 'package:vector_math/vector_math_64.dart' as vector;
 
 void main() {
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
-    home: ARDrawingCanvas(),
+    home: HizliTasarimScreen(),
   ));
 }
 
-class ARDrawingCanvas extends StatefulWidget {
-  const ARDrawingCanvas({super.key});
+class HizliTasarimScreen extends StatefulWidget {
+  const HizliTasarimScreen({super.key});
 
   @override
-  State<ARDrawingCanvas> createState() => _ARDrawingCanvasState();
+  State<HizliTasarimScreen> createState() => _HizliTasarimScreenState();
 }
 
-class _ARDrawingCanvasState extends State<ARDrawingCanvas> {
-  // Yöneticileri 'dynamic' tanımlayarak isim hatalarını baypas ediyoruz
-  dynamic arSessionManager;
+class _HizliTasarimScreenState extends State<HizliTasarimScreen> {
+  // --- AR YÖNETİCİLERİ (Motor Kısmı) ---
+  dynamic
+      arSessionManager; // Dynamic kullanarak setter hatalarını baypas ediyoruz
   late ARObjectManager arObjectManager;
   late ARAnchorManager arAnchorManager;
 
-  List<ARNode> nodes = [];
-  List<ARAnchor> anchors = [];
+  // --- UI DURUMLARI (Tasarım Kısmı) ---
+  String selectedCategory = "Animals"; // Varsayılan kategori
+  bool isARReady = false; // AR motoru hazır mı?
+
+  // Kategori Listesi (Senin klasör yapına uygun)
+  final List<String> categories = ["Animals", "Anime", "Cars", "Flowers"];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Hizli Tasarim AR")),
-      body: ARView(
-        onARViewCreated: onARViewCreated,
-        planeDetectionConfig: PlaneDetectionConfig.horizontalAndVertical,
+      body: Stack(
+        children: [
+          // KATMAN 1: AR KAMERA GÖRÜNTÜSÜ (Zemin)
+          ARView(
+            onARViewCreated: onARViewCreated,
+            planeDetectionConfig: PlaneDetectionConfig.horizontalAndVertical,
+          ),
+
+          // KATMAN 2: SENİN TASARIMIN (UI Overlay)
+          Column(
+            children: [
+              // Üst Bar (Şeffaf & Şık)
+              Container(
+                padding: const EdgeInsets.only(top: 50, left: 20, right: 20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.black.withOpacity(0.6), Colors.transparent],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "Hizli Tasarim AR",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: "Avenir", // Varsa fontun
+                      ),
+                    ),
+                    // Temizle Butonu
+                    IconButton(
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      onPressed: onRemoveEverything,
+                    ),
+                  ],
+                ),
+              ),
+
+              const Spacer(), // Arayı boş bırak
+
+              // Alt Panel: Kategori Seçimi ve Şablonlar
+              Container(
+                height: 160,
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.8),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    // Kategori Başlıkları (Yatay Liste)
+                    SizedBox(
+                      height: 50,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: categories.length,
+                        itemBuilder: (context, index) {
+                          final cat = categories[index];
+                          final isSelected = cat == selectedCategory;
+                          return GestureDetector(
+                            onTap: () => setState(() => selectedCategory = cat),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 15, vertical: 10),
+                              child: Text(
+                                cat,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.amber
+                                      : Colors.white54,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const Divider(color: Colors.white24, height: 1),
+
+                    // Şablon Listesi (Seçilen Kategoriye Göre)
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          "$selectedCategory Şablonları Yükleniyor...",
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        // Buraya asset'leri bağlayacağız (Bir sonraki adım)
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // KATMAN 3: Yükleniyor Göstergesi (AR Hazır Olana Kadar)
+          if (!isARReady)
+            Container(
+              color: Colors.black,
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Colors.amber),
+                    SizedBox(height: 20),
+                    Text("AR Motoru Başlatılıyor...",
+                        style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
 
+  // --- AR MOTOR FONKSİYONLARI ---
   void onARViewCreated(
       ARSessionManager sessionManager,
       ARObjectManager objectManager,
@@ -54,64 +174,35 @@ class _ARDrawingCanvasState extends State<ARDrawingCanvas> {
     this.arObjectManager = objectManager;
     this.arAnchorManager = anchorManager;
 
+    // TURUNCU NOKTALARI GİZLİYORUZ (Clean Look)
     this.arSessionManager.onInitialize(
-          showFeaturePoints: true,
-          showPlanes: true,
+          showFeaturePoints: false, // Artık nokta yok
+          showPlanes: false, // Zemin çizgisi yok (Temiz görüntü)
           handleTaps: true,
         );
     this.arObjectManager.onInitialize();
 
-    // Setter hatasını çözmek için doğrudan atama yapıyoruz
+    // UI'ya motorun hazır olduğunu bildir
+    setState(() {
+      isARReady = true;
+    });
+
+    // Tap Dinleyicisi (Şablon yerleştirmek için)
     try {
       arSessionManager.onPlaneTap = onPlaneTapHandler;
     } catch (e) {
-      debugPrint("Hata: onPlaneTap baglanamadi");
+      debugPrint("Hata: Setter atlanıyor");
     }
   }
 
-  // List<dynamic> kullanarak 'ARHitTestResult' tip hatasını siliyoruz
   Future<void> onPlaneTapHandler(List<dynamic> hitTestResults) async {
-    if (hitTestResults.isEmpty) return;
-
-    // Çalışma anında tipi kontrol etmeden ilk sonucu alıyoruz
-    final tap = hitTestResults.first;
-
-    var newAnchor = ARPlaneAnchor(transformation: tap.worldTransform);
-    bool? didAddAnchor = await arAnchorManager.addAnchor(newAnchor);
-
-    if (didAddAnchor == true) {
-      anchors.add(newAnchor);
-
-      var newNode = ARNode(
-        type: NodeType.webGLB,
-        uri:
-            "https://github.com/KhronosGroup/glTF-Sample-Models/raw/master/2.0/Duck/glTF-Binary/Duck.glb",
-        scale: vector.Vector3(0.1, 0.1, 0.1),
-        position: vector.Vector3(0, 0, 0),
-        rotation: vector.Vector4(1, 0, 0, 0),
-      );
-
-      // Parametre ismine takılmadan eklemeyi deniyoruz
-      bool? didAddNode =
-          await arObjectManager.addNode(newNode, planeAnchor: newAnchor);
-      if (didAddNode == true) {
-        nodes.add(newNode);
-      }
-    }
+    // Şimdilik boş bırakıyoruz, çünkü önce assetleri bağlayacağız.
+    // Tıklandığında seçili şablonu buraya indireceğiz.
+    debugPrint("Ekrana dokunuldu!");
   }
 
   Future<void> onRemoveEverything() async {
-    for (var anchor in anchors) {
-      arAnchorManager.removeAnchor(anchor);
-    }
-    anchors.clear();
-    nodes.clear();
-    setState(() {});
-  }
-
-  @override
-  void dispose() {
-    arSessionManager?.dispose();
-    super.dispose();
+    // Temizleme fonksiyonu
+    debugPrint("Sahne temizleniyor");
   }
 }
