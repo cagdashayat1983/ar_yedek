@@ -1,46 +1,144 @@
+import 'package:flutter/material.dart';
 import 'package:ar_flutter_plugin/ar_flutter_plugin.dart';
 import 'package:ar_flutter_plugin/datatypes/config_planedetection.dart';
-import 'package:ar_flutter_plugin/datatypes/hittest_result_types.dart'; // Isim hatasi olmamasi icin
+import 'package:ar_flutter_plugin/datatypes/hittest_result_types.dart';
+import 'package:ar_flutter_plugin/datatypes/node_types.dart';
 import 'package:ar_flutter_plugin/managers/ar_anchor_manager.dart';
 import 'package:ar_flutter_plugin/managers/ar_location_manager.dart';
 import 'package:ar_flutter_plugin/managers/ar_object_manager.dart';
 import 'package:ar_flutter_plugin/managers/ar_session_manager.dart';
-import 'package:flutter/material.dart';
+import 'package:ar_flutter_plugin/models/ar_anchor.dart';
+import 'package:ar_flutter_plugin/models/ar_node.dart';
+import 'package:vector_math/vector_math_64.dart' as vector;
 
 void main() {
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
-    home: HizliTasarimScreen(),
+    home: HomeScreen(), // Başlangıç noktası artık Ana Menü
   ));
 }
 
-class HizliTasarimScreen extends StatefulWidget {
-  const HizliTasarimScreen({super.key});
+// ==========================================
+// 1. BÖLÜM: ANA MENÜ (KATEGORİ SEÇİM EKRANI)
+// ==========================================
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
+  final List<String> categories = const ["Animals", "Anime", "Cars", "Flowers"];
 
   @override
-  State<HizliTasarimScreen> createState() => _HizliTasarimScreenState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Hizli Tasarim",
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      backgroundColor: Colors.white,
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Hoşgeldin Sam,",
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              "Ne Çizmek İstersin?",
+              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 30),
+            Expanded(
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 15,
+                  mainAxisSpacing: 15,
+                  childAspectRatio: 1.1,
+                ),
+                itemCount: categories.length,
+                itemBuilder: (context, index) {
+                  return GestureDetector(
+                    onTap: () {
+                      // Kategoriye tıklanınca AR Ekranına git
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ARDrawingScreen(
+                            selectedCategory: categories[index],
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.grey.shade300),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.folder_open,
+                              size: 50, color: Colors.orange[800]),
+                          const SizedBox(height: 15),
+                          Text(
+                            categories[index],
+                            style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class _HizliTasarimScreenState extends State<HizliTasarimScreen> {
-  // --- AR YÖNETİCİLERİ (Motor Kısmı) ---
-  dynamic
-      arSessionManager; // Dynamic kullanarak setter hatalarını baypas ediyoruz
+// ==========================================
+// 2. BÖLÜM: AR KAMERA EKRANI (MOTOR)
+// ==========================================
+class ARDrawingScreen extends StatefulWidget {
+  final String selectedCategory;
+  const ARDrawingScreen({super.key, required this.selectedCategory});
+
+  @override
+  State<ARDrawingScreen> createState() => _ARDrawingScreenState();
+}
+
+class _ARDrawingScreenState extends State<ARDrawingScreen> {
+  // AR Yöneticileri (Dynamic kullanarak hataları önlüyoruz)
+  dynamic arSessionManager;
   late ARObjectManager arObjectManager;
   late ARAnchorManager arAnchorManager;
 
-  // --- UI DURUMLARI (Tasarım Kısmı) ---
-  String selectedCategory = "Animals"; // Varsayılan kategori
-  bool isARReady = false; // AR motoru hazır mı?
-
-  // Kategori Listesi (Senin klasör yapına uygun)
-  final List<String> categories = ["Animals", "Anime", "Cars", "Flowers"];
+  bool isReady = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          // KATMAN 1: AR KAMERA GÖRÜNTÜSÜ (Zemin)
+          // KATMAN 1: AR KAMERA GÖRÜNTÜSÜ
           ARView(
             onARViewCreated: onARViewCreated,
             planeDetectionConfig: PlaneDetectionConfig.horizontalAndVertical,
@@ -49,29 +147,41 @@ class _HizliTasarimScreenState extends State<HizliTasarimScreen> {
           // KATMAN 2: SENİN TASARIMIN (UI Overlay)
           Column(
             children: [
-              // Üst Bar (Şeffaf & Şık)
+              // Üst Bar (Geri Dön Butonu ve Başlık)
               Container(
-                padding: const EdgeInsets.only(top: 50, left: 20, right: 20),
+                padding: const EdgeInsets.only(
+                    top: 50, left: 20, right: 20, bottom: 20),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Colors.black.withOpacity(0.6), Colors.transparent],
+                    colors: [Colors.black.withOpacity(0.8), Colors.transparent],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                   ),
                 ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      "Hizli Tasarim AR",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: "Avenir", // Varsa fontun
+                    InkWell(
+                      onTap: () => Navigator.pop(context), // Geri dön
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.arrow_back_ios_new,
+                            color: Colors.white, size: 20),
                       ),
                     ),
-                    // Temizle Butonu
+                    const SizedBox(width: 15),
+                    Text(
+                      widget.selectedCategory, // "Animals" vb. yazar
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold),
+                    ),
+                    const Spacer(),
+                    // Sağ tarafa temizle butonu
                     IconButton(
                       icon: const Icon(Icons.refresh, color: Colors.white),
                       onPressed: onRemoveEverything,
@@ -80,80 +190,36 @@ class _HizliTasarimScreenState extends State<HizliTasarimScreen> {
                 ),
               ),
 
-              const Spacer(), // Arayı boş bırak
+              const Spacer(), // Ortayı boş bırak (Kamera görünsün)
 
-              // Alt Panel: Kategori Seçimi ve Şablonlar
-              Container(
-                height: 160,
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.8),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
+              // Alt Bilgi Paneli
+              if (isReady)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                  ),
+                  child: Text(
+                    "Şablon yerleştirmek için zemine dokun.\n(Kategori: ${widget.selectedCategory})",
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white70),
                   ),
                 ),
-                child: Column(
-                  children: [
-                    // Kategori Başlıkları (Yatay Liste)
-                    SizedBox(
-                      height: 50,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: categories.length,
-                        itemBuilder: (context, index) {
-                          final cat = categories[index];
-                          final isSelected = cat == selectedCategory;
-                          return GestureDetector(
-                            onTap: () => setState(() => selectedCategory = cat),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 15, vertical: 10),
-                              child: Text(
-                                cat,
-                                style: TextStyle(
-                                  color: isSelected
-                                      ? Colors.amber
-                                      : Colors.white54,
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const Divider(color: Colors.white24, height: 1),
-
-                    // Şablon Listesi (Seçilen Kategoriye Göre)
-                    Expanded(
-                      child: Center(
-                        child: Text(
-                          "$selectedCategory Şablonları Yükleniyor...",
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                        // Buraya asset'leri bağlayacağız (Bir sonraki adım)
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
 
-          // KATMAN 3: Yükleniyor Göstergesi (AR Hazır Olana Kadar)
-          if (!isARReady)
+          // Yükleniyor Göstergesi
+          if (!isReady)
             Container(
               color: Colors.black,
               child: const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    CircularProgressIndicator(color: Colors.amber),
+                    CircularProgressIndicator(color: Colors.orange),
                     SizedBox(height: 20),
-                    Text("AR Motoru Başlatılıyor...",
+                    Text("AR Kamerası Başlatılıyor...",
                         style: TextStyle(color: Colors.white)),
                   ],
                 ),
@@ -164,7 +230,7 @@ class _HizliTasarimScreenState extends State<HizliTasarimScreen> {
     );
   }
 
-  // --- AR MOTOR FONKSİYONLARI ---
+  // --- AR KURULUMU ---
   void onARViewCreated(
       ARSessionManager sessionManager,
       ARObjectManager objectManager,
@@ -174,20 +240,19 @@ class _HizliTasarimScreenState extends State<HizliTasarimScreen> {
     this.arObjectManager = objectManager;
     this.arAnchorManager = anchorManager;
 
-    // TURUNCU NOKTALARI GİZLİYORUZ (Clean Look)
+    // Turuncu noktaları ve beyaz zeminleri GİZLİYORUZ (Clean Look)
     this.arSessionManager.onInitialize(
-          showFeaturePoints: false, // Artık nokta yok
-          showPlanes: false, // Zemin çizgisi yok (Temiz görüntü)
+          showFeaturePoints: false,
+          showPlanes: false,
           handleTaps: true,
         );
     this.arObjectManager.onInitialize();
 
-    // UI'ya motorun hazır olduğunu bildir
     setState(() {
-      isARReady = true;
+      isReady = true;
     });
 
-    // Tap Dinleyicisi (Şablon yerleştirmek için)
+    // Tıklama olayını bağlıyoruz
     try {
       arSessionManager.onPlaneTap = onPlaneTapHandler;
     } catch (e) {
@@ -196,13 +261,11 @@ class _HizliTasarimScreenState extends State<HizliTasarimScreen> {
   }
 
   Future<void> onPlaneTapHandler(List<dynamic> hitTestResults) async {
-    // Şimdilik boş bırakıyoruz, çünkü önce assetleri bağlayacağız.
-    // Tıklandığında seçili şablonu buraya indireceğiz.
-    debugPrint("Ekrana dokunuldu!");
+    // Buraya şablon ekleme kodu gelecek. Şimdilik log basıyoruz.
+    debugPrint("Ekrana dokunuldu! Kategori: ${widget.selectedCategory}");
   }
 
   Future<void> onRemoveEverything() async {
-    // Temizleme fonksiyonu
-    debugPrint("Sahne temizleniyor");
+    // Temizleme fonksiyonu (Daha sonra dolduracağız)
   }
 }
