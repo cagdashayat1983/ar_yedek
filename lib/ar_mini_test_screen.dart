@@ -18,6 +18,8 @@ import 'package:vector_math/vector_math_64.dart' as v;
 
 class ARMiniTestScreen extends StatefulWidget {
   final String glbAssetPath;
+  // EĞER SAYDAMLIK KULLANACAKSAN GLB YERİNE PNG LAZIM, BURAYA PNG YOLUNU DA VEREBİLİRSİN
+  // Örn: assets/fil.png
 
   const ARMiniTestScreen({super.key, required this.glbAssetPath});
 
@@ -34,61 +36,50 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   ARNode? _activeNode;
 
   bool _placing = false;
-
-  // Multi-touch klon fix
   int _activePointers = 0;
   bool get _isMultiTouch => _activePointers > 1;
 
-  // Gesture sonrası “fake tap”leri blokla
   DateTime _lastGestureAt = DateTime.fromMillisecondsSinceEpoch(0);
   static const Duration _tapCooldownAfterGesture = Duration(milliseconds: 550);
 
-  // UI state
   bool _tapLocked = false;
   bool _mirrored = false;
-
-  // Note8: plane çizimi kapalı başlat
   bool _showPlanes = false;
+  bool _flashOn = false;
+  bool _isRecording = false;
 
-  bool _flashOn = false; // ARView torch çoğu cihazda yok
-  bool _isRecording = false; // ARView kayıt API yok
-
-  int _gridMode = 0; // 0 / 3 / 4 / 5
-  int _tiltMode = 0; // 0 / 1 / 2
+  int _gridMode = 0;
+  int _tiltMode = 0;
 
   // Transform
   double _scale = 0.6;
   double _rotYDeg = 0.0;
 
-  // Zemine oturma için default negatif lift
-  double _liftMeters = -0.03;
-  static const double _liftStep = 0.01; // 1 cm
+  // ✅ ZEMİNE YAPIŞTIRMA FİX 1: LiftMeters tam sıfır olmalı ki masanın altına veya üstüne kaçmasın.
+  double _liftMeters = 0.0;
+  static const double _liftStep = 0.01;
 
-  // Drag X/Z
   double _posX = 0.0;
   double _posZ = 0.0;
   static const double _dragToMeters = 0.0012;
 
-  // Gesture base
   double _baseScale = 0.6;
   double _baseRotYDeg = 0.0;
   double _baseX = 0.0;
   double _baseZ = 0.0;
 
-  // Debounce update
+  // ✅ YENİ: RAKİBİN SIRRI OLAN SAYDAMLIK (OPACITY) DEĞERİ
+  double _opacity = 0.6;
+  // ✅ YENİ: GERÇEK AR MI YOKSA KAMERA ÜSTÜ İLLÜZYON MU?
+  bool _useIllusionMode = false;
+
   Timer? _updateTimer;
-
-  // Rebuild kilidi (klon olmasın)
   bool _rebuilding = false;
-
   Timer? _toastTimer;
   String _toastText = "";
 
   bool get _hasModel => _activeNode != null && _activeAnchor != null;
-
-  // ✅ Bu düzeltme: modelin “ters gelmesini” sabitler (plane üstünde 180° flip)
-  // Eğer bir gün terslik tamamen düzelirse bunu 0 yapabilirsin.
-  static const double _inPlaneFlipRad = math.pi; // 180°
+  static const double _inPlaneFlipRad = math.pi;
 
   void _showToast(String msg) {
     if (!mounted) return;
@@ -125,63 +116,39 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
       handleTaps: true,
     );
     _objects!.onInitialize();
-
     _session!.onPlaneOrPointTap = _onPlaneOrPointTap;
 
-    _showToast("Plane görünce dokun → model 1 kez. Y- ile zemine oturt.");
+    _showToast("Plane görünce dokun → model 1 kez eklensin.");
   }
 
   double _degToRad(double deg) => deg * math.pi / 180.0;
 
   v.Vector3 _positionVec() => v.Vector3(_posX, _liftMeters, _posZ);
 
-  // ✅ Sağlam quaternion → axis-angle
-  v.Vector4 _quatToAxisAngle(v.Quaternion q) {
-    q.normalize();
-    final w = q.w.clamp(-1.0, 1.0);
-    final angle = 2.0 * math.acos(w);
-    final s = math.sin(angle / 2.0);
-
-    if (s.abs() < 1e-6) {
-      return v.Vector4(0.0, 1.0, 0.0, 0.0);
-    }
-
-    final axis = v.Vector3(q.x / s, q.y / s, q.z / s)..normalize();
-    return v.Vector4(axis.x, axis.y, axis.z, angle);
-  }
-
-  // ✅ Yatay kilit: Pitch/Roll sabit, sadece Yaw + Scale değişir
-  // ✅ Ters gelme fix: plane üstünde 180° flip ekli
   v.Vector4 _combinedRotation() {
     final tiltDeg = _tiltMode == 0 ? 0.0 : (_tiltMode == 1 ? 15.0 : 30.0);
 
-    // Yatay duruş (zemine yatır)
+    // ✅ ZEMİNE YAPIŞTIRMA FİX 2: Eskiden burada -math.pi / 2 vardı ve modeli ayağa kaldırıyordu!
+    // Sıfır (0.0) yaparak Blender'dan geldiği gibi düz (masaya serilmiş) kalmasını sağladık.
     final qBase = v.Quaternion.axisAngle(
       v.Vector3(1, 0, 0),
-      -math.pi / 2,
-    ); // -90° X
+      0.0,
+    );
 
-    // ✅ Ters gelme düzeltmesi: yaw'a +180 ekle
     double yawDeg = (_rotYDeg + 180.0) % 360.0;
-
-    // Mirror: yaw yönünü ters çevir
     if (_mirrored) yawDeg = (360.0 - yawDeg) % 360.0;
 
-    // ✅ Yaw HER ZAMAN world-up (0,1,0) ekseninde (dikleşmeyi engeller)
     final qYawWorld = v.Quaternion.axisAngle(
       v.Vector3(0, 1, 0),
       _degToRad(yawDeg),
     );
 
-    // Tilt (opsiyonel)
     final qTilt = v.Quaternion.axisAngle(
       v.Vector3(1, 0, 0),
       _degToRad(tiltDeg),
     );
 
-    // ✅ Sıra: önce (base*tilt) ile yatay ekseni kur, sonra world yaw ile sadece kendi etrafında döndür
     final q = (qYawWorld * (qBase * qTilt))..normalize();
-
     final w = q.w.clamp(-1.0, 1.0);
     final angle = 2.0 * math.acos(w);
     final s = math.sin(angle / 2.0);
@@ -248,17 +215,17 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
           (await _objects!.addNode(newNode, planeAnchor: anchor)) ?? false;
       if (ok) {
         _activeNode = newNode;
-      } else {
-        _showToast("❌ Güncelleme başarısız (node eklenemedi)");
       }
     } catch (_) {
-      _showToast("❌ Güncelleme hatası");
     } finally {
       _rebuilding = false;
     }
   }
 
   Future<void> _onPlaneOrPointTap(List<ARHitTestResult?> hits) async {
+    // İllüzyon modundaysa AR'a dokunmaya gerek yok
+    if (_useIllusionMode) return;
+
     if (_isMultiTouch) return;
 
     final now = DateTime.now();
@@ -269,29 +236,27 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
       return;
     }
 
-    if (_tapLocked) return;
-    if (_placing) return;
-    if (_anchors == null || _objects == null) return;
-    if (hits.isEmpty) return;
+    if (_tapLocked ||
+        _placing ||
+        _anchors == null ||
+        _objects == null ||
+        hits.isEmpty) return;
 
     _placing = true;
-
     final valid = hits.where((h) => h != null).cast<ARHitTestResult>().toList();
     if (valid.isEmpty) {
       _placing = false;
       return;
     }
 
-    final planeHits = valid
-        .where((h) => h.type == ARHitTestResultType.plane)
-        .toList();
+    final planeHits =
+        valid.where((h) => h.type == ARHitTestResultType.plane).toList();
     final hit = planeHits.isNotEmpty ? planeHits.first : valid.first;
 
     try {
       final anchor = ARPlaneAnchor(transformation: hit.worldTransform);
       final okAnchor = (await _anchors!.addAnchor(anchor)) ?? false;
       if (!okAnchor) {
-        _showToast("❌ Anchor eklenemedi");
         _placing = false;
         return;
       }
@@ -301,15 +266,13 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
           (await _objects!.addNode(node, planeAnchor: anchor)) ?? false;
       if (!okNode) {
         await _anchors!.removeAnchor(anchor);
-        _showToast("❌ Model eklenemedi");
         _placing = false;
         return;
       }
 
       _activeAnchor = anchor;
       _activeNode = node;
-
-      _showToast("✅ Eklendi. 2 parmak: scale + kendi etrafında dön (yaw)");
+      _showToast("✅ Masaya Yapıştırıldı!");
     } catch (e) {
       _showToast("❌ Hata: $e");
     } finally {
@@ -334,13 +297,11 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     setState(() {
       _activeNode = null;
       _activeAnchor = null;
-
       _scale = 0.6;
       _rotYDeg = 0.0;
-      _liftMeters = -0.03;
+      _liftMeters = 0.0;
       _posX = 0.0;
       _posZ = 0.0;
-
       _tiltMode = 0;
       _mirrored = false;
     });
@@ -348,7 +309,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     _showToast("Temizlendi. Tekrar dokunabilirsin.");
   }
 
-  // Gestures
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
     _baseRotYDeg = _rotYDeg;
@@ -357,14 +317,11 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
-    if (!_hasModel) return;
+    if (!_hasModel && !_useIllusionMode) return;
 
     if (_isMultiTouch) {
       _lastGestureAt = DateTime.now();
-
-      final newScale = (_baseScale * d.scale).clamp(0.05, 2.0);
-
-      // ✅ Pitch/Roll kilitli → sadece YAW (kendi etrafında) + SCALE
+      final newScale = (_baseScale * d.scale).clamp(0.05, 3.0);
       final deltaDeg = d.rotation * 180.0 / math.pi;
       final newRot = (_baseRotYDeg + deltaDeg) % 360.0;
 
@@ -372,114 +329,137 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
         _scale = newScale;
         _rotYDeg = newRot;
       });
-
-      _debounceApply();
+      if (!_useIllusionMode) _debounceApply();
     } else {
-      final dx = d.focalPointDelta.dx * _dragToMeters;
-      final dz = d.focalPointDelta.dy * _dragToMeters;
+      final dx =
+          d.focalPointDelta.dx * (_useIllusionMode ? 1.5 : _dragToMeters);
+      final dz =
+          d.focalPointDelta.dy * (_useIllusionMode ? 1.5 : _dragToMeters);
 
       setState(() {
         _posX = _baseX + dx;
         _posZ = _baseZ + dz;
       });
-
-      _debounceApply();
+      if (!_useIllusionMode) _debounceApply();
     }
   }
 
   void _onScaleEnd(ScaleEndDetails d) {
-    if (!_hasModel) return;
+    if (!_hasModel && !_useIllusionMode) return;
     _lastGestureAt = DateTime.now();
-    _debounceApply(ms: 60);
+    if (!_useIllusionMode) _debounceApply(ms: 60);
   }
 
-  // Buttons
   void _toggleGrid() {
     setState(() {
-      if (_gridMode == 0) {
+      if (_gridMode == 0)
         _gridMode = 3;
-      } else if (_gridMode == 3) {
+      else if (_gridMode == 3)
         _gridMode = 4;
-      } else if (_gridMode == 4) {
+      else if (_gridMode == 4)
         _gridMode = 5;
-      } else {
+      else
         _gridMode = 0;
-      }
     });
-    _showToast(_gridMode == 0 ? "Izgara kapalı" : "Izgara: ${_gridMode}x");
   }
 
   void _toggleTilt() {
     setState(() => _tiltMode = (_tiltMode + 1) % 3);
-    _debounceApply(ms: 80);
+    if (!_useIllusionMode) _debounceApply(ms: 80);
   }
 
   void _toggleMirror() {
     setState(() => _mirrored = !_mirrored);
-    _debounceApply(ms: 80);
+    if (!_useIllusionMode) _debounceApply(ms: 80);
   }
 
   void _rotPlus90() {
     setState(() => _rotYDeg = (_rotYDeg + 90.0) % 360.0);
-    _debounceApply(ms: 80);
+    if (!_useIllusionMode) _debounceApply(ms: 80);
   }
 
-  void _toggleFlash() {
-    setState(() => _flashOn = !_flashOn);
-    _showToast("ARView flash kontrolünü çoğu cihaz desteklemez.");
-  }
-
-  void _toggleRecording() {
-    setState(() => _isRecording = !_isRecording);
-    _showToast("ARView video kaydı yok. Ekran kaydı kullan.");
-  }
-
+  void _toggleFlash() => setState(() => _flashOn = !_flashOn);
+  void _toggleRecording() => setState(() => _isRecording = !_isRecording);
   void _liftUp() {
     setState(() => _liftMeters = (_liftMeters + _liftStep).clamp(-0.30, 0.60));
-    _showToast("Lift: ${_liftMeters.toStringAsFixed(3)} m");
-    _debounceApply(ms: 50);
+    if (!_useIllusionMode) _debounceApply(ms: 50);
   }
 
   void _liftDown() {
     setState(() => _liftMeters = (_liftMeters - _liftStep).clamp(-0.30, 0.60));
-    _showToast("Lift: ${_liftMeters.toStringAsFixed(3)} m");
-    _debounceApply(ms: 50);
+    if (!_useIllusionMode) _debounceApply(ms: 50);
   }
 
-  void _togglePlanes() {
-    setState(() => _showPlanes = !_showPlanes);
-    _showToast(
-      _showPlanes ? "Plane açık (ağır olabilir)" : "Plane kapalı (hızlı)",
-    );
-  }
+  void _togglePlanes() => setState(() => _showPlanes = !_showPlanes);
 
   @override
   Widget build(BuildContext context) {
+    // PNG yolu (glb yerine resim göstermek için illüzyon modunda kullanılır)
+    String pngPath = widget.glbAssetPath.replaceAll('.glb', '.png');
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
+          // 1. KATMAN: AR KAMERA VE GERÇEK 3D AR MODU
           Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (_) => setState(() => _activePointers++),
             onPointerUp: (_) => setState(
-              () => _activePointers = (_activePointers - 1).clamp(0, 10),
-            ),
+                () => _activePointers = (_activePointers - 1).clamp(0, 10)),
             onPointerCancel: (_) => setState(
-              () => _activePointers = (_activePointers - 1).clamp(0, 10),
-            ),
+                () => _activePointers = (_activePointers - 1).clamp(0, 10)),
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onScaleStart: _onScaleStart,
               onScaleUpdate: _onScaleUpdate,
               onScaleEnd: _onScaleEnd,
-              child: ARView(
-                onARViewCreated: _onARViewCreated,
-                planeDetectionConfig:
-                    PlaneDetectionConfig.horizontalAndVertical,
+              child: Stack(
+                children: [
+                  ARView(
+                    onARViewCreated: _onARViewCreated,
+                    planeDetectionConfig:
+                        PlaneDetectionConfig.horizontalAndVertical,
+                  ),
+
+                  // ✅ 2. KATMAN: RAKİBİN YAPTIĞI "SAYDAMLIKLI İLLÜZYON MODU"
+                  if (_useIllusionMode)
+                    Positioned.fill(
+                      child: Center(
+                        child: Opacity(
+                          opacity: _opacity, // SLIDER BURAYI KONTROL EDER
+                          child: Transform(
+                            alignment: FractionalOffset.center,
+                            transform: Matrix4.identity()
+                              ..setEntry(3, 2, 0.001) // 3D Derinlik
+                              ..rotateX(_degToRad(_tiltMode == 0
+                                  ? 0
+                                  : (_tiltMode == 1
+                                      ? 45.0
+                                      : 65.0))) // Yere Yatma
+                              ..rotateZ(
+                                  _degToRad(_rotYDeg)) // Kendi ekseninde dönme
+                              ..translate(_posX, _posZ), // Parmağınla sürükleme
+                            child: Transform.flip(
+                              flipX: _mirrored,
+                              child: Image.asset(
+                                pngPath, // Ekranda PNG resmini gösterir
+                                width: 300 * _scale,
+                                errorBuilder: (c, o, s) => const Icon(
+                                    Icons.broken_image,
+                                    color: Colors.white,
+                                    size: 100),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
+
           if (_gridMode > 0)
             IgnorePointer(
               child: Positioned.fill(
@@ -490,6 +470,7 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                 ),
               ),
             ),
+
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
@@ -499,9 +480,7 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                   filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 10,
-                    ),
+                        horizontal: 10, vertical: 10),
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.45),
                       borderRadius: BorderRadius.circular(26),
@@ -511,16 +490,27 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                       children: [
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(
-                            Icons.arrow_back,
-                            color: Colors.white,
-                          ),
+                          icon:
+                              const Icon(Icons.arrow_back, color: Colors.white),
                         ),
-                        IconButton(
-                          onPressed: _togglePlanes,
+                        // MOD DEĞİŞTİRİCİ BUTON (Gerçek AR <-> Saydam Çizim Modu)
+                        TextButton.icon(
+                          onPressed: () async {
+                            await _clearAll();
+                            setState(
+                                () => _useIllusionMode = !_useIllusionMode);
+                          },
                           icon: Icon(
-                            _showPlanes ? Icons.layers : Icons.layers_clear,
-                            color: Colors.white,
+                            _useIllusionMode
+                                ? Icons.edit_note
+                                : Icons.view_in_ar,
+                            color: Colors.cyanAccent,
+                          ),
+                          label: Text(
+                            _useIllusionMode ? "ÇİZİM MODU" : "AR MODU",
+                            style: const TextStyle(
+                                color: Colors.cyanAccent,
+                                fontWeight: FontWeight.bold),
                           ),
                         ),
                         const Spacer(),
@@ -528,19 +518,13 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                           Text(
                             _toastText,
                             style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                                color: Colors.white70, fontSize: 12),
                           ),
                         const Spacer(),
                         IconButton(
                           onPressed: _clearAll,
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.white,
-                          ),
+                          icon: const Icon(Icons.delete_outline,
+                              color: Colors.white),
                         ),
                       ],
                     ),
@@ -549,114 +533,116 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
               ),
             ),
           ),
+
+          // ALT MENÜ
           Positioned(
             left: 10,
             right: 10,
             bottom: 18,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(35),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 14,
-                    horizontal: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.black.withOpacity(0.70),
-                        Colors.black.withOpacity(0.50),
-                      ],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ✅ YENİ OPACITY SLIDER (Sadece Çizim modunda görünür)
+                if (_useIllusionMode)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    borderRadius: BorderRadius.circular(35),
-                    border: Border.all(color: Colors.white.withOpacity(0.15)),
-                  ),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
                     child: Row(
                       children: [
-                        _btn(
-                          _isRecording
-                              ? Icons.stop_circle_outlined
-                              : Icons.videocam,
-                          _isRecording ? "Durdur" : "Kaydet",
-                          _isRecording,
-                          Colors.redAccent,
-                          _toggleRecording,
-                        ),
-                        const SizedBox(width: 8),
-                        _btn(
-                          _tapLocked ? Icons.lock : Icons.lock_open,
-                          "Kilit",
-                          _tapLocked,
-                          Colors.redAccent,
-                          () => setState(() => _tapLocked = !_tapLocked),
-                        ),
-                        const SizedBox(width: 8),
-                        _btn(
-                          Icons.view_in_ar,
-                          _tiltMode == 0 ? "Eğim" : "${_tiltMode}x",
-                          _tiltMode > 0,
-                          Colors.orangeAccent,
-                          _toggleTilt,
-                        ),
-                        const SizedBox(width: 8),
-                        _btn(
-                          Icons.flip,
-                          "Ayna",
-                          _mirrored,
-                          Colors.blueAccent,
-                          _toggleMirror,
-                        ),
-                        const SizedBox(width: 8),
-                        _btn(
-                          Icons.rotate_90_degrees_cw,
-                          "+90°",
-                          false,
-                          Colors.white,
-                          _rotPlus90,
-                        ),
-                        const SizedBox(width: 8),
-                        _btn(
-                          Icons.arrow_downward,
-                          "Y-",
-                          true,
-                          Colors.cyanAccent,
-                          _liftDown,
-                        ),
-                        const SizedBox(width: 8),
-                        _btn(
-                          Icons.arrow_upward,
-                          "Y+",
-                          true,
-                          Colors.cyanAccent,
-                          _liftUp,
-                        ),
-                        const SizedBox(width: 8),
-                        _btn(
-                          Icons.grid_on,
-                          _gridMode == 0 ? "Izgara" : "${_gridMode}x",
-                          _gridMode > 0,
-                          Colors.greenAccent,
-                          _toggleGrid,
-                        ),
-                        const SizedBox(width: 8),
-                        _btn(
-                          _flashOn ? Icons.flash_on : Icons.flash_off,
-                          "Flaş",
-                          _flashOn,
-                          Colors.amber,
-                          _toggleFlash,
+                        const Icon(Icons.opacity,
+                            color: Colors.white54, size: 20),
+                        Expanded(
+                          child: Slider(
+                            value: _opacity,
+                            min: 0.1,
+                            max: 1.0,
+                            activeColor: Colors.cyanAccent,
+                            inactiveColor: Colors.white24,
+                            onChanged: (val) => setState(() => _opacity = val),
+                          ),
                         ),
                       ],
+                    ),
+                  ),
+
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(35),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 14, horizontal: 12),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.black.withOpacity(0.70),
+                            Colors.black.withOpacity(0.50)
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(35),
+                        border:
+                            Border.all(color: Colors.white.withOpacity(0.15)),
+                      ),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        child: Row(
+                          children: [
+                            _btn(
+                                _isRecording
+                                    ? Icons.stop_circle_outlined
+                                    : Icons.videocam,
+                                _isRecording ? "Durdur" : "Kaydet",
+                                _isRecording,
+                                Colors.redAccent,
+                                _toggleRecording),
+                            const SizedBox(width: 8),
+                            _btn(
+                                _tapLocked ? Icons.lock : Icons.lock_open,
+                                "Kilit",
+                                _tapLocked,
+                                Colors.redAccent,
+                                () => setState(() => _tapLocked = !_tapLocked)),
+                            const SizedBox(width: 8),
+                            _btn(
+                                Icons.view_in_ar,
+                                _tiltMode == 0 ? "Eğim" : "${_tiltMode}x",
+                                _tiltMode > 0,
+                                Colors.orangeAccent,
+                                _toggleTilt),
+                            const SizedBox(width: 8),
+                            _btn(Icons.flip, "Ayna", _mirrored,
+                                Colors.blueAccent, _toggleMirror),
+                            const SizedBox(width: 8),
+                            _btn(Icons.rotate_90_degrees_cw, "+90°", false,
+                                Colors.white, _rotPlus90),
+                            const SizedBox(width: 8),
+                            _btn(Icons.arrow_downward, "Y-", true,
+                                Colors.cyanAccent, _liftDown),
+                            const SizedBox(width: 8),
+                            _btn(Icons.arrow_upward, "Y+", true,
+                                Colors.cyanAccent, _liftUp),
+                            const SizedBox(width: 8),
+                            _btn(
+                                Icons.grid_on,
+                                _gridMode == 0 ? "Izgara" : "${_gridMode}x",
+                                _gridMode > 0,
+                                Colors.greenAccent,
+                                _toggleGrid),
+                            const SizedBox(width: 8),
+                            _btn(_flashOn ? Icons.flash_on : Icons.flash_off,
+                                "Flaş", _flashOn, Colors.amber, _toggleFlash),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
@@ -664,13 +650,8 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     );
   }
 
-  Widget _btn(
-    IconData icon,
-    String label,
-    bool isActive,
-    Color activeColor,
-    VoidCallback onTap,
-  ) {
+  Widget _btn(IconData icon, String label, bool isActive, Color activeColor,
+      VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -681,42 +662,34 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
             decoration: BoxDecoration(
               gradient: isActive
                   ? LinearGradient(
-                      colors: [activeColor, activeColor.withOpacity(0.6)],
-                    )
-                  : LinearGradient(
-                      colors: [
-                        Colors.white.withOpacity(0.12),
-                        Colors.white.withOpacity(0.06),
-                      ],
-                    ),
+                      colors: [activeColor, activeColor.withOpacity(0.6)])
+                  : LinearGradient(colors: [
+                      Colors.white.withOpacity(0.12),
+                      Colors.white.withOpacity(0.06)
+                    ]),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: isActive
-                    ? activeColor.withOpacity(0.5)
-                    : Colors.white.withOpacity(0.10),
-                width: 1.5,
-              ),
+                  color: isActive
+                      ? activeColor.withOpacity(0.5)
+                      : Colors.white.withOpacity(0.10),
+                  width: 1.5),
               boxShadow: isActive
                   ? [
                       BoxShadow(
-                        color: activeColor.withOpacity(0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
+                          color: activeColor.withOpacity(0.35),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2))
                     ]
                   : [],
             ),
             child: Icon(icon, color: Colors.white, size: 22),
           ),
           const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isActive ? activeColor : Colors.white54,
-              fontSize: 9,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
+          Text(label,
+              style: TextStyle(
+                  color: isActive ? activeColor : Colors.white54,
+                  fontSize: 9,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
         ],
       ),
     );
@@ -733,7 +706,6 @@ class GridPainter extends CustomPainter {
       ..color = Colors.cyanAccent.withOpacity(0.3)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
-
     final w = size.width / gridCount;
     final h = size.height / gridCount;
 
