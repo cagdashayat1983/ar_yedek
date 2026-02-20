@@ -1,109 +1,139 @@
-// lib/widgets/category_card.dart - Pİnterest STYLE
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+
 import '../models/category_model.dart';
-import '../screens/drawing_screen.dart';
+import '../screens/templates_screen.dart';
 
 class CategoryCard extends StatelessWidget {
   final CategoryModel category;
-  const CategoryCard({super.key, required this.category});
+  final List<CameraDescription> cameras;
+
+  const CategoryCard(
+      {super.key, required this.category, required this.cameras});
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      elevation: 12,
-      borderRadius: BorderRadius.circular(24),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (context) => DrawingScreen(category: category)),
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [category.color, category.color.withOpacity(0.7)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Material(
+        elevation: 8,
+        shadowColor: category.color.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(28),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => TemplatesScreen(
+                category: category,
+                cameras: cameras,
+              ),
             ),
-            borderRadius: BorderRadius.circular(24),
           ),
-          child: Stack(
-            children: [
-              // Karakalem önizleme (1_sketch.png)
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    image: DecorationImage(
-                      image: AssetImage(
-                          'assets/templates/${category.id}_sketch.png'),
-                      fit: BoxFit.cover,
-                      opacity: 0.15, // Hafif görünüm
+          child: Container(
+            height: 180,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  category.color.withOpacity(0.8),
+                  category.color,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: 0.15,
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Icon(
+                        category.icon,
+                        size: 120,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
-              ),
-
-              // İçerik
-              Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // AR Badge
-                    Container(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.25),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Icon(Icons.camera_enhance,
-                              size: 16, color: Colors.white),
-                          SizedBox(width: 6),
-                          Text(
-                            'AR',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
                             ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.auto_awesome,
+                                    size: 14, color: Colors.white),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'AR MODU',
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            category.icon,
+                            color: Colors.white.withOpacity(0.9),
+                            size: 28,
                           ),
                         ],
                       ),
-                    ),
-
-                    // Başlık
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          category.title,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            category.title,
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Karakalem şablonu',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                      ],
-                    ),
-
-                    // Alt ikon
-                    Icon(Icons.arrow_forward_ios,
-                        color: Colors.white70, size: 20),
-                  ],
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Text(
+                                'Şablonları Gör',
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.arrow_forward_ios,
+                                  color: Colors.white70, size: 10),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

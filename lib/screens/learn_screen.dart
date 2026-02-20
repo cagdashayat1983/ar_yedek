@@ -1,9 +1,13 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // ✅ EKLENDİ
+import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'tutorial_screen.dart';
+import 'profile_screen.dart';
+import 'subscription_screen.dart';
+import 'categories_screen.dart';
 
 // 1. ZORLUK SEVİYESİ
 enum Difficulty { easy, medium, hard }
@@ -38,18 +42,21 @@ class LessonModel {
   final String? coverImage;
   final List<String> steps;
   final Difficulty difficulty;
+  bool isLocked;
+  bool isCompleted;
 
   LessonModel({
     required this.title,
     this.coverImage,
     required this.steps,
     required this.difficulty,
+    this.isLocked = true,
+    this.isCompleted = false,
   });
 }
 
 class LearnScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
-
   const LearnScreen({super.key, required this.cameras});
 
   @override
@@ -59,16 +66,24 @@ class LearnScreen extends StatefulWidget {
 class _LearnScreenState extends State<LearnScreen> {
   List<LessonModel> _lessons = [];
   bool _isLoading = true;
+  int _bottomIndex = 1;
+
+  int _userXp = 0;
+  final int _nextLevelThreshold = 2000;
+  String _userRank = "Çaylak";
 
   @override
   void initState() {
     super.initState();
-    _loadLessonsFromSingleFolder();
+    _loadLessonsAndXp();
   }
 
-  // TEK KLASÖRDEN GRUPLAMA YAPAN FONKSİYON
-  Future<void> _loadLessonsFromSingleFolder() async {
+  Future<void> _loadLessonsAndXp() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      _userXp = prefs.getInt('total_xp') ?? 0;
+      _userRank = _userXp >= _nextLevelThreshold ? "Çizimci" : "Çaylak";
+
       final manifest = await AssetManifest.loadFromAssetBundle(
           DefaultAssetBundle.of(context));
       final allAssets = manifest.listAssets();
@@ -79,20 +94,16 @@ class _LearnScreenState extends State<LearnScreen> {
           .toList();
 
       Map<String, List<String>> groups = {};
-
       for (var file in tutorialFiles) {
         String fileName = file.split('/').last;
         if (fileName.contains('_')) {
           String lessonPrefix = fileName.split('_')[0];
-          if (!groups.containsKey(lessonPrefix)) {
-            groups[lessonPrefix] = [];
-          }
+          if (!groups.containsKey(lessonPrefix)) groups[lessonPrefix] = [];
           groups[lessonPrefix]!.add(file);
         }
       }
 
       List<LessonModel> loadedLessons = [];
-
       groups.forEach((lessonPrefix, files) {
         String? coverImg;
         List<String> stepImages = [];
@@ -100,20 +111,15 @@ class _LearnScreenState extends State<LearnScreen> {
 
         for (var file in files) {
           String fileName = file.split('/').last.toLowerCase();
-
           if (fileName.contains('cover')) {
             coverImg = file;
             if (fileName.contains('easy'))
               diff = Difficulty.easy;
-            else if (fileName.contains('hard'))
-              diff = Difficulty.hard;
-            else
-              diff = Difficulty.medium;
+            else if (fileName.contains('hard')) diff = Difficulty.hard;
           } else {
             stepImages.add(file);
           }
         }
-
         stepImages.sort((a, b) => a.compareTo(b));
         String displayTitle =
             lessonPrefix[0].toUpperCase() + lessonPrefix.substring(1);
@@ -128,281 +134,332 @@ class _LearnScreenState extends State<LearnScreen> {
         }
       });
 
-      if (mounted) {
+      for (int i = 0; i < loadedLessons.length; i++) {
+        bool isDone =
+            prefs.getBool('completed_${loadedLessons[i].title}') ?? false;
+        loadedLessons[i].isCompleted = isDone;
+        if (i == 0) {
+          loadedLessons[i].isLocked = false;
+        } else {
+          bool prevIsDone =
+              prefs.getBool('completed_${loadedLessons[i - 1].title}') ?? false;
+          loadedLessons[i].isLocked = !prevIsDone;
+        }
+      }
+
+      if (mounted)
         setState(() {
           _lessons = loadedLessons;
           _isLoading = false;
         });
-      }
     } catch (e) {
-      debugPrint("Hata: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ✅ YENİ: DERS TIKLAMA MANTIĞI
   void _onLessonTap(LessonModel lesson) async {
-    if (lesson.steps.isEmpty) {
+    if (lesson.isLocked) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content:
-              Text("Bu dersin adımları eksik!", style: GoogleFonts.poppins()),
-          backgroundColor: Colors.grey[800],
-        ),
+        const SnackBar(
+            content: Text("Önceki dersi tamamlamalısın! 🔒"),
+            backgroundColor: Colors.redAccent),
       );
+      HapticFeedback.heavyImpact();
       return;
     }
-
-    // 1. Kaydedilmiş ilerlemeyi kontrol et
     final prefs = await SharedPreferences.getInstance();
     int? savedStep = prefs.getInt('progress_${lesson.title}');
-
     if (savedStep != null && savedStep > 0 && savedStep < lesson.steps.length) {
-      // 2. Eğer kayıt varsa sor
-      if (!mounted) return;
       _showResumeDialog(lesson, savedStep);
     } else {
-      // 3. Kayıt yoksa direkt başla
       _startTutorial(lesson, 0);
     }
   }
 
-  // ✅ YENİ: DEVAM ET / BAŞTAN BAŞLA DİYALOĞU
   void _showResumeDialog(LessonModel lesson, int step) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          "Hoş Geldin! 👋",
-          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-        ),
+        title: const Text("Devam Et?"),
         content: Text(
-          "${lesson.title} çiziminde ${step + 1}. adımda kalmıştın. Kaldığın yerden devam etmek ister misin?",
-          style: GoogleFonts.poppins(fontSize: 14),
-        ),
+            "${lesson.title} dersine kaldığın yerden devam etmek ister misin?"),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _startTutorial(lesson, 0); // Baştan başla
-            },
-            child: Text("Baştan Başla",
-                style: GoogleFonts.poppins(color: Colors.grey)),
-          ),
+              onPressed: () {
+                Navigator.pop(context);
+                _startTutorial(lesson, 0);
+              },
+              child: const Text("Baştan")),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _startTutorial(lesson, step); // Kaldığı yerden devam
+              _startTutorial(lesson, step);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: lesson.difficulty.color,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-            child: Text("Devam Et (${step + 1}. Adım)",
-                style: GoogleFonts.poppins(
-                    color: Colors.white, fontWeight: FontWeight.bold)),
+                backgroundColor: lesson.difficulty.color),
+            child:
+                const Text("Devam Et", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  // ✅ YENİ: TUTORIAL BAŞLATMA YARDIMCISI
-  void _startTutorial(LessonModel lesson, int startStep) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TutorialScreen(
-          title: lesson.title,
-          imagePaths: lesson.steps,
-          cameras: widget.cameras,
-          initialStep: startStep, // Başlangıç adımını gönderiyoruz
-        ),
-      ),
-    );
+  void _startTutorial(LessonModel lesson, int startStep) async {
+    await Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (context) => TutorialScreen(
+                title: lesson.title,
+                imagePaths: lesson.steps,
+                cameras: widget.cameras,
+                initialStep: startStep)));
+    _loadLessonsAndXp();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text("Eğitim Merkezi",
+        title: Text("Gelişimim",
             style: GoogleFonts.poppins(
-                color: Colors.black87,
-                fontWeight: FontWeight.w800,
-                fontSize: 24)),
-        backgroundColor: Colors.transparent,
+                color: Colors.black, fontWeight: FontWeight.w800)),
+        backgroundColor: Colors.white,
         elevation: 0,
-        centerTitle: false,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        actions: [
+          Center(
+              child: Padding(
+                  padding: const EdgeInsets.only(right: 15),
+                  child: Text("$_userXp XP",
+                      style: GoogleFonts.poppins(
+                          color: Colors.blue, fontWeight: FontWeight.bold))))
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _lessons.isEmpty
-              ? Center(
-                  child: Text(
-                      "Ders bulunamadı.\nDosya isimlerinin 'dersadi_xx.png' formatında olduğundan emin olun."))
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
-                  itemCount: _lessons.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 20),
-                  itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("AR ile Adım Adım Çiz",
-                              style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 20),
-                          _buildLessonCard(context, _lessons[index]),
-                        ],
-                      );
-                    }
-                    return _buildLessonCard(context, _lessons[index]);
-                  },
+          : Column(
+              children: [
+                _buildXpHeader(),
+                const Divider(),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: _lessons.length,
+                    itemBuilder: (context, index) =>
+                        _buildLessonCard(_lessons[index]),
+                  ),
                 ),
+              ],
+            ),
+      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
-  // 🔥 KART TASARIMI
-  Widget _buildLessonCard(BuildContext context, LessonModel lesson) {
-    Color themeColor = lesson.difficulty.color;
-    String levelLabel = lesson.difficulty.label;
+  Widget _buildXpHeader() {
+    double progress = _userXp / _nextLevelThreshold;
+    if (progress > 1.0) progress = 1.0;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_userRank.toUpperCase(),
+                      style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 18,
+                          color: Colors.blue)),
+                  const Text("Sanat Yolculuğu",
+                      style: TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
+              ),
+              Text("%${(progress * 100).toInt()}",
+                  style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold, fontSize: 20)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 12,
+                backgroundColor: Colors.grey.shade200,
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue)),
+          ),
+          const SizedBox(height: 8),
+          if (_userXp < _nextLevelThreshold)
+            Text("${_nextLevelThreshold - _userXp} XP sonra Çizimci olacaksın!",
+                style: const TextStyle(fontSize: 11, color: Colors.grey))
+          else
+            const Text("Tebrikler, artık bir Çizimci'sin! 🎨",
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  // ✅ YENİ GÜNCELLENMİŞ KART TASARIMI
+  Widget _buildLessonCard(LessonModel lesson) {
+    Color themeColor = lesson.isLocked ? Colors.grey : lesson.difficulty.color;
 
     return GestureDetector(
-      onTap: () => _onLessonTap(lesson), // ✅ ARTIK YENİ FONKSİYONU ÇAĞIRIYOR
-      child: Container(
-        height: 160,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: themeColor.withOpacity(0.3), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: themeColor.withOpacity(0.15),
-              blurRadius: 15,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
+      onTap: () => _onLessonTap(lesson),
+      child: Opacity(
+        opacity: lesson.isLocked ? 0.6 : 1.0,
+        child: Container(
+          height: 140, // Resim ve metin için alanı biraz artırdık
+          margin: const EdgeInsets.only(bottom: 15),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: themeColor.withOpacity(0.2)),
+            boxShadow: [
+              BoxShadow(
+                  color: themeColor.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4))
+            ],
+          ),
           child: Row(
             children: [
-              // SOL TARAF: RESİM ALANI
+              // --- SOL RESİM ALANI ---
               Container(
-                width: 130,
-                height: double.infinity,
+                width: 110,
                 decoration: BoxDecoration(
                   color: themeColor.withOpacity(0.1),
                   borderRadius:
                       const BorderRadius.horizontal(left: Radius.circular(24)),
                 ),
-                child: Center(
-                  child: lesson.coverImage != null
-                      ? Padding(
-                          padding: const EdgeInsets.all(2.0),
-                          child: Image.asset(
-                            lesson.coverImage!,
-                            fit: BoxFit.contain,
-                            errorBuilder: (c, e, s) =>
-                                Icon(Icons.broken_image, color: themeColor),
-                          ),
-                        )
-                      : Icon(Icons.image_not_supported_rounded,
-                          color: themeColor.withOpacity(0.5), size: 40),
+                child: ClipRRect(
+                  borderRadius:
+                      const BorderRadius.horizontal(left: Radius.circular(24)),
+                  child: Center(
+                    child: lesson.isLocked
+                        ? const Icon(Icons.lock, color: Colors.grey, size: 40)
+                        : (lesson.isCompleted
+                            ? Stack(
+                                // ✅ TAMAMLANANLARDA RESİM ÜZERİNDE YAZI
+                                fit: StackFit.expand,
+                                children: [
+                                  if (lesson.coverImage != null)
+                                    Image.asset(lesson.coverImage!,
+                                        fit: BoxFit.cover),
+                                  Container(
+                                      color: Colors.black
+                                          .withOpacity(0.4)), // Karartma
+                                  Center(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 3),
+                                      decoration: BoxDecoration(
+                                          color: Colors.green.withOpacity(0.9),
+                                          borderRadius:
+                                              BorderRadius.circular(6)),
+                                      child: Text(
+                                        "TAMAMLANDI",
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : (lesson.coverImage != null
+                                ? Image.asset(lesson.coverImage!,
+                                    fit: BoxFit.contain)
+                                : Icon(Icons.brush,
+                                    color: themeColor, size: 40))),
+                  ),
                 ),
               ),
 
-              // SAĞ TARAF: BİLGİLER (Aynı kaldı)
+              // --- SAĞ BİLGİ ALANI ---
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                  padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        lesson.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: themeColor.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          levelLabel,
+                      Text(lesson.title,
                           style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: themeColor,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color:
+                                  lesson.isLocked ? Colors.grey : Colors.black),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 5),
                       Text(
-                        "⏱ ${lesson.steps.length} Adım",
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey[500],
-                        ),
-                      ),
-                      const Spacer(),
-                      Align(
-                        alignment: Alignment.bottomRight,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                              color: themeColor,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                    color: themeColor.withOpacity(0.4),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 3))
-                              ]),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text("BAŞLA",
-                                  style: GoogleFonts.poppins(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 12)),
-                              const SizedBox(width: 4),
-                              const Icon(Icons.play_arrow_rounded,
-                                  color: Colors.white, size: 16),
-                            ],
-                          ),
-                        ),
-                      )
+                          lesson.isLocked
+                              ? "KİLİTLİ"
+                              : (lesson.isCompleted
+                                  ? "BAŞARIYLA BİTTİ"
+                                  : "+100 XP KAZAN"),
+                          style: TextStyle(
+                              color: lesson.isCompleted
+                                  ? Colors.green
+                                  : themeColor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 5),
+                      Text("${lesson.steps.length} Adım",
+                          style:
+                              TextStyle(fontSize: 12, color: Colors.grey[600])),
                     ],
                   ),
                 ),
               ),
+              const Icon(Icons.chevron_right, color: Colors.grey),
+              const SizedBox(width: 10),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return BottomNavigationBar(
+      currentIndex: _bottomIndex,
+      onTap: (index) {
+        if (index == 0)
+          Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => CategoriesScreen(cameras: widget.cameras)));
+        else if (index == 2)
+          Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const SubscriptionScreen()));
+        else if (index == 3)
+          Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const ProfileScreen()));
+      },
+      type: BottomNavigationBarType.fixed,
+      selectedItemColor: Colors.blue,
+      items: const [
+        BottomNavigationBarItem(
+            icon: Icon(Icons.grid_view_rounded), label: "Menü"),
+        BottomNavigationBarItem(
+            icon: Icon(Icons.auto_stories_rounded), label: "Öğren"),
+        BottomNavigationBarItem(
+            icon: Icon(Icons.workspace_premium_rounded), label: "PRO"),
+        BottomNavigationBarItem(
+            icon: Icon(Icons.person_rounded), label: "Profil"),
+      ],
     );
   }
 }

@@ -1,70 +1,77 @@
+// lib/models/category_model.dart
+
 import 'package:flutter/material.dart';
 
 class CategoryModel {
-  final String id; // assets/templates/<id>/ klasör adı
-  final String title; // UI başlık
-  final String subtitle; // UI alt yazı
+  final String title;
   final Color color;
-  final String coverAsset; // assets/categories/<id>.png
+  final String templateFolder; // Şablonların olduğu klasör adı
+  final String imagePath; // Kategori kartındaki kapak resmi
 
-  const CategoryModel({
-    required this.id,
+  CategoryModel({
     required this.title,
-    required this.subtitle,
     required this.color,
-    required this.coverAsset,
+    required this.templateFolder,
+    required this.imagePath,
   });
 }
 
-// ✅ Kapaklar: assets/categories/*.png (senin klasörle birebir)
-const List<CategoryModel> categories = [
+// Uygulamada Kullanılacak Kategoriler Listesi
+final List<CategoryModel> categories = [
   CategoryModel(
-    id: 'animals',
-    title: 'Hayvanlar',
-    subtitle: 'Hızlı çizim şablonları',
-    color: Color(0xFF3FB984),
-    coverAsset: 'assets/categories/animals.png',
+    title: "Hayvanlar",
+    color: const Color(0xFFFF8A65), // Turuncu
+    templateFolder: "animals",
+    imagePath: "assets/categories/animals.png",
   ),
   CategoryModel(
-    id: 'anime',
-    title: 'Anime',
-    subtitle: 'Karakter şablonları',
-    color: Color(0xFFFF5A7A),
-    coverAsset: 'assets/categories/anime.png',
+    title: "Arabalar",
+    color: const Color(0xFF4FC3F7), // Mavi
+    templateFolder: "cars",
+    imagePath: "assets/categories/cars.png",
   ),
   CategoryModel(
-    id: 'cars',
-    title: 'Arabalar',
-    subtitle: 'Detaylı araç çizimleri',
-    color: Color(0xFF5B7CFA),
-    coverAsset: 'assets/categories/cars.png',
+    title: "Anime",
+    color: const Color(0xFF9575CD), // Mor
+    templateFolder: "anime",
+    imagePath: "assets/categories/anime.png",
   ),
   CategoryModel(
-    id: 'cartoon',
-    title: 'Cartoon',
-    subtitle: 'Eğlenceli çizimler',
-    color: Color(0xFFFFB020),
-    coverAsset: 'assets/categories/cartoon.png',
+    title: "Çizgi Film",
+    color: const Color(0xFFFFD54F), // Sarı
+    templateFolder: "cartoon",
+    imagePath: "assets/categories/cartoon.png",
   ),
   CategoryModel(
-    id: 'flowers',
-    title: 'Çiçekler',
-    subtitle: 'Doğa & bitki',
-    color: Color(0xFF8E5BFF),
-    coverAsset: 'assets/categories/flowers.png',
+    title: "Çiçekler",
+    color: const Color(0xFFF06292), // Pembe
+    templateFolder: "flowers",
+    imagePath: "assets/categories/flowers.png",
   ),
   CategoryModel(
-    id: 'human',
-    title: 'İnsan',
-    subtitle: 'Poz & anatomi',
-    color: Color(0xFF2DB7C6),
-    coverAsset: 'assets/categories/human.png',
+    title: "İnsanlar",
+    color: const Color(0xFFA1887F), // Kahve
+    templateFolder: "human",
+    imagePath: "assets/categories/human.png",
   ),
   CategoryModel(
-    id: 'nature',
-    title: 'Doğa',
-    subtitle: 'Manzara şablonları',
-    color: Color(0xFF2E7D32),
-    coverAsset: 'assets/categories/nature.png',
+    title: "Doğa",
+    color: const Color(0xFF81C784), // Yeşil
+    templateFolder: "nature",
+    imagePath: "assets/categories/nature.png",
+  ),
+
+  // --- ÖZEL MENÜLER ---
+  CategoryModel(
+    title: "Pro Üyelik",
+    color: const Color(0xFFFFD700), // Altın
+    templateFolder: "",
+    imagePath: "assets/categories/premium.png",
+  ),
+  CategoryModel(
+    title: "Profil",
+    color: const Color(0xFF64B5F6), // Açık Mavi
+    templateFolder: "",
+    imagePath: "assets/categories/profile.png",
   ),
 ];

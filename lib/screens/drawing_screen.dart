@@ -1,21 +1,33 @@
+// lib/screens/drawing_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:flutter/services.dart';
+import 'dart:io';
+import 'package:google_fonts/google_fonts.dart';
+
+// ✅ YENİ PAKETLER
+import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+
 import '../models/category_model.dart';
+import '../ar_mini_test_screen.dart';
 
 class DrawingScreen extends StatefulWidget {
   final CategoryModel category;
   final List<CameraDescription> cameras;
-  final String imagePath; // ✅ EKLENEN 1: Resim yolu değişkeni
+  final String imagePath;
 
   const DrawingScreen({
     super.key,
     required this.category,
     required this.cameras,
-    required this.imagePath, // ✅ EKLENEN 2: Zorunlu parametre
+    required this.imagePath,
   });
 
   @override
@@ -25,6 +37,9 @@ class DrawingScreen extends StatefulWidget {
 class _DrawingScreenState extends State<DrawingScreen> {
   CameraController? controller;
   bool isCameraReady = false;
+
+  // ✅ PAYLAŞIM İÇİN CONTROLLER
+  final ScreenshotController _screenshotController = ScreenshotController();
 
   // --- AYARLAR ---
   double _opacity = 0.5;
@@ -62,9 +77,8 @@ class _DrawingScreenState extends State<DrawingScreen> {
     }
     if (cams.isEmpty) return;
 
-    // 🔥 OPTİMİZASYON: Medium (720p) performans için iyidir.
     controller =
-        CameraController(cams[0], ResolutionPreset.medium, enableAudio: false);
+        CameraController(cams[0], ResolutionPreset.high, enableAudio: false);
 
     try {
       await controller!.initialize();
@@ -75,6 +89,81 @@ class _DrawingScreenState extends State<DrawingScreen> {
     }
   }
 
+  // ✅ 5. ÖZELLİK: BAŞARI KARTI PAYLAŞMA FONKSİYONU
+  void _shareMyArt() async {
+    HapticFeedback.heavyImpact(); // Güçlü titreşim feedback'i
+
+    // Paylaşılacak Kartın Görselleştirilmesi
+    _screenshotController
+        .captureFromWidget(Container(
+      width: 400,
+      height: 600,
+      padding: const EdgeInsets.all(35),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(
+        children: [
+          Text("HAYATIFY",
+              style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 32,
+                  letterSpacing: 8)),
+          const SizedBox(height: 10),
+          Text("ARTÜRKİYE'NİN SANAT PLATFORMU",
+              style: GoogleFonts.poppins(
+                  color: Colors.grey, fontSize: 8, letterSpacing: 2)),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: Colors.white10)),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: widget.imagePath.startsWith('assets/')
+                  ? Image.asset(widget.imagePath,
+                      height: 280, fit: BoxFit.contain)
+                  : Image.file(File(widget.imagePath),
+                      height: 280, fit: BoxFit.contain),
+            ),
+          ),
+          const Spacer(),
+          Text("BU ESERİ AR İLE ÇİZDİM",
+              style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold)),
+          const SizedBox(height: 5),
+          const Text("🎨 #Hayatify",
+              style: TextStyle(
+                  color: Colors.amber,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16)),
+          const SizedBox(height: 20),
+        ],
+      ),
+    ))
+        .then((Uint8List? image) async {
+      if (image != null) {
+        final directory = await getApplicationDocumentsDirectory();
+        final imageFile =
+            await File('${directory.path}/hayatify_achievement.png').create();
+        await imageFile.writeAsBytes(image);
+
+        // Cihazın paylaşım menüsünü aç
+        await Share.shareXFiles([XFile(imageFile.path)],
+            text: 'Hayatify ile sanatımı konuşturdum! Sen de dene.');
+      }
+    });
+  }
+
   @override
   void dispose() {
     controller?.dispose();
@@ -83,40 +172,63 @@ class _DrawingScreenState extends State<DrawingScreen> {
     super.dispose();
   }
 
-  // --- FONKSİYONLAR ---
-  void togglePaper() => setState(() => _paperMode = (_paperMode + 1) % 3);
+  // --- YARDIMCI FONKSİYONLAR (DOKUNULMADI) ---
+  String _modelPathFromTemplate(String templateAssetPath) {
+    if (!templateAssetPath.startsWith('assets/')) return "";
+    final normalized = templateAssetPath.replaceAll('\\', '/');
+    const tplRoot = 'assets/templates/';
+    if (!normalized.startsWith(tplRoot)) {
+      final cleaned = normalized.startsWith('assets/')
+          ? normalized.substring('assets/'.length)
+          : normalized;
+      return 'assets/models/${cleaned.replaceAll(RegExp(r'\.(png|webp|jpg|jpeg)$', caseSensitive: false), '.glb')}';
+    }
+    final relative = normalized.substring(tplRoot.length);
+    final glbRelative = relative.replaceAll(
+        RegExp(r'\.(png|webp|jpg|jpeg)$', caseSensitive: false), '.glb');
+    return 'assets/models/$glbRelative';
+  }
 
-  void toggleGrid() => setState(() {
-        if (_gridMode == 0)
-          _gridMode = 3;
-        else if (_gridMode == 3)
-          _gridMode = 4;
-        else if (_gridMode == 4)
-          _gridMode = 5;
-        else
-          _gridMode = 0;
-      });
+  void togglePaper() {
+    HapticFeedback.selectionClick();
+    setState(() => _paperMode = (_paperMode + 1) % 3);
+  }
 
-  void togglePerspective() =>
-      setState(() => _perspectiveMode = (_perspectiveMode + 1) % 3);
+  void toggleGrid() {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_gridMode == 0)
+        _gridMode = 3;
+      else if (_gridMode == 3)
+        _gridMode = 4;
+      else if (_gridMode == 4)
+        _gridMode = 5;
+      else
+        _gridMode = 0;
+    });
+  }
+
+  void togglePerspective() {
+    HapticFeedback.selectionClick();
+    setState(() => _perspectiveMode = (_perspectiveMode + 1) % 3);
+  }
 
   Future<void> toggleRecording() async {
+    HapticFeedback.mediumImpact();
     if (controller == null || !controller!.value.isInitialized) return;
 
     if (isRecording) {
       try {
-        final file = await controller!.stopVideoRecording();
+        await controller!.stopVideoRecording();
         _recordingTimer?.cancel();
         setState(() {
           isRecording = false;
           _recordDuration = 0;
         });
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text("Video Galeriye Kaydedildi"),
-                backgroundColor: Colors.green),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text("Video Kaydedildi"),
+              backgroundColor: Colors.green));
         }
       } catch (e) {
         debugPrint("Kayıt hatası: $e");
@@ -140,13 +252,32 @@ class _DrawingScreenState extends State<DrawingScreen> {
     return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 
+  Widget _buildImageWidget() {
+    final bool isAsset = widget.imagePath.startsWith('assets/');
+    if (isAsset) {
+      return Image.asset(
+        widget.imagePath,
+        opacity: AlwaysStoppedAnimation(_opacity),
+        fit: BoxFit.contain,
+        errorBuilder: (ctx, err, stack) =>
+            const Icon(Icons.broken_image, color: Colors.red, size: 50),
+      );
+    } else {
+      return Image.file(
+        File(widget.imagePath),
+        opacity: AlwaysStoppedAnimation(_opacity),
+        fit: BoxFit.contain,
+        errorBuilder: (ctx, err, stack) =>
+            const Icon(Icons.image_not_supported, color: Colors.red, size: 40),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // ✅ EKLENEN 3: Artık gelen 'imagePath'i kullanıyoruz.
-    String imageToDisplay = widget.imagePath;
-
-    double perspectiveAngle =
-        _perspectiveMode == 0 ? 0 : (_perspectiveMode == 1 ? 0.35 : 0.70);
+    final double perspectiveAngle =
+        (_perspectiveMode == 0 ? 0.0 : (_perspectiveMode == 1 ? 0.35 : 0.70))
+            .toDouble();
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -163,17 +294,14 @@ class _DrawingScreenState extends State<DrawingScreen> {
           if (_paperMode > 0)
             IgnorePointer(
               child: Center(
-                child: RepaintBoundary(
-                  child: CustomPaint(
-                    size: Size(MediaQuery.of(context).size.width,
-                        MediaQuery.of(context).size.height),
-                    painter: PaperFramePainter(isLandscape: _paperMode == 2),
-                  ),
+                child: CustomPaint(
+                  size: MediaQuery.of(context).size,
+                  painter: PaperFramePainter(isLandscape: _paperMode == 2),
                 ),
               ),
             ),
 
-          // 3. RESİM VE IZGARA (Interactive Viewer)
+          // 3. RESİM VE IZGARA
           IgnorePointer(
             ignoring: isGhostLocked,
             child: InteractiveViewer(
@@ -195,34 +323,31 @@ class _DrawingScreenState extends State<DrawingScreen> {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        // Resim
-                        Container(
-                          decoration: BoxDecoration(
-                            border: !isGhostLocked
-                                ? Border.all(
-                                    color: Colors.white.withOpacity(0.3),
-                                    width: 1,
-                                    style: BorderStyle.solid)
-                                : null,
-                          ),
-                          child: Image.asset(
-                            imageToDisplay,
-                            opacity: AlwaysStoppedAnimation(_opacity),
-                            fit: BoxFit.contain,
-                            errorBuilder: (ctx, err, stack) => const Icon(
-                                Icons.broken_image,
-                                color: Colors.red,
-                                size: 50),
+                        Hero(
+                          tag: widget.imagePath,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: !isGhostLocked
+                                  ? Border.all(
+                                      color: Colors.white.withOpacity(0.5),
+                                      width: 1.5)
+                                  : null,
+                              boxShadow: !isGhostLocked
+                                  ? [
+                                      BoxShadow(
+                                          color: Colors.blueAccent
+                                              .withOpacity(0.3),
+                                          blurRadius: 10)
+                                    ]
+                                  : [],
+                            ),
+                            child: _buildImageWidget(),
                           ),
                         ),
-                        // Izgara
                         if (_gridMode > 0)
                           Positioned.fill(
-                            child: RepaintBoundary(
-                              child: CustomPaint(
-                                painter: GridPainter(gridCount: _gridMode),
-                              ),
-                            ),
+                            child: CustomPaint(
+                                painter: GridPainter(gridCount: _gridMode)),
                           ),
                       ],
                     ),
@@ -235,74 +360,101 @@ class _DrawingScreenState extends State<DrawingScreen> {
           // 4. ARAYÜZ
           SafeArea(
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 // --- ÜST BAR ---
-                Padding(
-                  padding:
+                Container(
+                  margin:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: ClipRRect(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.4),
                     borderRadius: BorderRadius.circular(30),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.4),
-                          borderRadius: BorderRadius.circular(30),
-                          border:
-                              Border.all(color: Colors.white.withOpacity(0.1)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const BackButton(color: Colors.white),
-                            if (isRecording)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.redAccent.withOpacity(0.8),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.circle,
-                                        color: Colors.white, size: 10),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      _formatDuration(_recordDuration),
-                                      style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else
-                              Expanded(
-                                child: Text(
-                                  widget.category.title,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 1.0),
-                                ),
-                              ),
-                            if (!isRecording)
-                              _buildTopIconBtn(
-                                  _paperMode == 0
-                                      ? Icons.crop_free
-                                      : (_paperMode == 1
-                                          ? Icons.crop_portrait
-                                          : Icons.crop_landscape),
-                                  _paperMode > 0,
-                                  togglePaper),
-                          ],
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withOpacity(0.1)),
+                          child: const Icon(Icons.arrow_back_rounded,
+                              color: Colors.white, size: 20),
                         ),
                       ),
-                    ),
+                      if (isRecording)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 6),
+                          decoration: BoxDecoration(
+                              color: Colors.redAccent.withOpacity(0.9),
+                              borderRadius: BorderRadius.circular(20)),
+                          child: Text(_formatDuration(_recordDuration),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold)),
+                        )
+                      else
+                        Text(widget.category.title.toUpperCase(),
+                            style: const TextStyle(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12)),
+                      if (!isRecording)
+                        Row(
+                          children: [
+                            _buildTopIconBtn(
+                                _paperMode == 0
+                                    ? Icons.crop_free_rounded
+                                    : (_paperMode == 1
+                                        ? Icons.crop_portrait_rounded
+                                        : Icons.crop_landscape_rounded),
+                                _paperMode > 0,
+                                togglePaper),
+                            const SizedBox(width: 8),
+                            if (widget.imagePath.startsWith('assets/'))
+                              GestureDetector(
+                                onTap: () {
+                                  HapticFeedback.mediumImpact();
+                                  final glbPath =
+                                      _modelPathFromTemplate(widget.imagePath);
+                                  Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) => ARMiniTestScreen(
+                                              glbAssetPath: glbPath)));
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                      gradient: const LinearGradient(colors: [
+                                        Colors.purpleAccent,
+                                        Colors.deepPurple
+                                      ]),
+                                      borderRadius: BorderRadius.circular(20)),
+                                  child: const Row(children: [
+                                    Icon(Icons.view_in_ar_rounded,
+                                        color: Colors.white, size: 16),
+                                    SizedBox(width: 4),
+                                    Text("AR",
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12))
+                                  ]),
+                                ),
+                              ),
+                          ],
+                        )
+                      else
+                        const SizedBox(width: 40),
+                    ],
                   ),
                 ),
 
@@ -310,112 +462,82 @@ class _DrawingScreenState extends State<DrawingScreen> {
 
                 // --- ALT KONTROL PANELİ ---
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 20),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(35),
+                    borderRadius: BorderRadius.circular(32),
                     child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 15, horizontal: 10),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              Colors.black.withOpacity(0.7),
-                              Colors.black.withOpacity(0.5),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(35),
-                          border: Border.all(
-                              color: isRecording
-                                  ? Colors.redAccent.withOpacity(0.5)
-                                  : Colors.white.withOpacity(0.15),
-                              width: 1),
+                          color: const Color(0xFF1E1E1E).withOpacity(0.75),
+                          borderRadius: BorderRadius.circular(32),
+                          border:
+                              Border.all(color: Colors.white.withOpacity(0.12)),
                         ),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // AKILLI SLIDER
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 5),
-                              child: Row(
-                                children: [
-                                  GestureDetector(
-                                    onTap: () => setState(
-                                        () => _isOpacityMode = !_isOpacityMode),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                          color: Colors.white10,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                              color: Colors.white24)),
-                                      child: Icon(
-                                          _isOpacityMode
-                                              ? Icons.opacity
-                                              : Icons.rotate_right,
+                            Row(
+                              children: [
+                                GestureDetector(
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    setState(
+                                        () => _isOpacityMode = !_isOpacityMode);
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: _isOpacityMode
+                                          ? Colors.cyanAccent.withOpacity(0.2)
+                                          : Colors.purpleAccent
+                                              .withOpacity(0.2),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
                                           color: _isOpacityMode
                                               ? Colors.cyanAccent
-                                              : Colors.purpleAccent,
-                                          size: 20),
+                                              : Colors.purpleAccent),
                                     ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: SliderTheme(
-                                      data: SliderTheme.of(context).copyWith(
-                                        activeTrackColor: _isOpacityMode
+                                    child: Icon(
+                                        _isOpacityMode
+                                            ? Icons.opacity_rounded
+                                            : Icons.rotate_right_rounded,
+                                        color: _isOpacityMode
                                             ? Colors.cyanAccent
                                             : Colors.purpleAccent,
-                                        inactiveTrackColor: Colors.white10,
-                                        thumbColor: Colors.white,
-                                        overlayColor: (_isOpacityMode
-                                                ? Colors.cyanAccent
-                                                : Colors.purpleAccent)
-                                            .withOpacity(0.2),
-                                        trackHeight: 3.0,
-                                        thumbShape: const RoundSliderThumbShape(
-                                            enabledThumbRadius: 8),
-                                      ),
-                                      child: Slider(
-                                        value: _isOpacityMode
-                                            ? _opacity
-                                            : _rotationAngle,
-                                        onChanged: (v) => setState(() {
-                                          if (_isOpacityMode) {
-                                            _opacity = v;
-                                          } else {
-                                            _rotationAngle = v;
-                                          }
-                                        }),
-                                        min: 0.0,
-                                        max: _isOpacityMode ? 1.0 : 360.0,
-                                      ),
+                                        size: 20),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      activeTrackColor: _isOpacityMode
+                                          ? Colors.cyanAccent
+                                          : Colors.purpleAccent,
+                                      thumbColor: Colors.white,
+                                    ),
+                                    child: Slider(
+                                      value: _isOpacityMode
+                                          ? _opacity
+                                          : _rotationAngle,
+                                      min: 0.0,
+                                      max: _isOpacityMode ? 1.0 : 360.0,
+                                      onChanged: (v) => setState(() {
+                                        if (_isOpacityMode)
+                                          _opacity = v;
+                                        else
+                                          _rotationAngle = v;
+                                      }),
                                     ),
                                   ),
-                                  SizedBox(
-                                    width: 40,
-                                    child: Text(
-                                      _isOpacityMode
-                                          ? "%${(_opacity * 100).toInt()}"
-                                          : "${_rotationAngle.toInt()}°",
-                                      style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold),
-                                      textAlign: TextAlign.end,
-                                    ),
-                                  )
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 16),
 
-                            const SizedBox(height: 12),
-
-                            // BUTONLAR
+                            // 2. BUTONLAR
                             SingleChildScrollView(
                               scrollDirection: Axis.horizontal,
                               physics: const BouncingScrollPhysics(),
@@ -423,79 +545,78 @@ class _DrawingScreenState extends State<DrawingScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   _buildModernBtn(
-                                    icon: isRecording
-                                        ? Icons.stop_circle_outlined
-                                        : Icons.videocam,
-                                    label: isRecording ? "Durdur" : "Kaydet",
-                                    isActive: isRecording,
-                                    activeColor: Colors.redAccent,
-                                    isPulse: isRecording,
-                                    onTap: toggleRecording,
-                                  ),
-                                  const SizedBox(width: 8),
+                                      icon: isRecording
+                                          ? Icons.stop_rounded
+                                          : Icons.videocam_rounded,
+                                      label: isRecording ? "Durdur" : "Kaydet",
+                                      isActive: isRecording,
+                                      activeColor: Colors.redAccent,
+                                      isPulse: isRecording,
+                                      onTap: toggleRecording),
+                                  const SizedBox(width: 10),
+                                  // ✅ YENİ: PAYLAŞ BUTONU
                                   _buildModernBtn(
-                                    icon: isGhostLocked
-                                        ? Icons.lock
-                                        : Icons.lock_open,
-                                    label: "Kilit",
-                                    isActive: isGhostLocked,
-                                    activeColor: Colors.redAccent,
-                                    onTap: () => setState(
-                                        () => isGhostLocked = !isGhostLocked),
-                                  ),
-                                  const SizedBox(width: 8),
+                                      icon: Icons.share_rounded,
+                                      label: "Paylaş",
+                                      isActive: false,
+                                      activeColor: Colors.amber,
+                                      onTap: _shareMyArt),
+                                  const SizedBox(width: 10),
                                   _buildModernBtn(
-                                    icon: Icons.view_in_ar,
-                                    label: _perspectiveMode == 0
-                                        ? "Eğim"
-                                        : "${_perspectiveMode}x",
-                                    isActive: _perspectiveMode > 0,
-                                    activeColor: Colors.orangeAccent,
-                                    onTap: togglePerspective,
-                                  ),
-                                  const SizedBox(width: 8),
+                                      icon: isGhostLocked
+                                          ? Icons.lock_rounded
+                                          : Icons.lock_open_rounded,
+                                      label: "Kilitle",
+                                      isActive: isGhostLocked,
+                                      activeColor: Colors.amber,
+                                      onTap: () {
+                                        HapticFeedback.selectionClick();
+                                        setState(() =>
+                                            isGhostLocked = !isGhostLocked);
+                                      }),
+                                  const SizedBox(width: 10),
                                   _buildModernBtn(
-                                    icon: Icons.flip,
-                                    label: "Ayna",
-                                    isActive: isFlipped,
-                                    activeColor: Colors.blueAccent,
-                                    onTap: () =>
-                                        setState(() => isFlipped = !isFlipped),
-                                  ),
-                                  const SizedBox(width: 8),
+                                      icon: Icons.view_in_ar_rounded,
+                                      label: _perspectiveMode == 0
+                                          ? "Perspektif"
+                                          : "${_perspectiveMode}x",
+                                      isActive: _perspectiveMode > 0,
+                                      activeColor: Colors.orangeAccent,
+                                      onTap: togglePerspective),
+                                  const SizedBox(width: 10),
                                   _buildModernBtn(
-                                    icon: Icons.rotate_90_degrees_cw,
-                                    label: "+90°",
-                                    isActive: false,
-                                    activeColor: Colors.white,
-                                    onTap: () => setState(() => _rotationAngle =
-                                        (_rotationAngle + 90) % 360),
-                                  ),
-                                  const SizedBox(width: 8),
+                                      icon: Icons.flip_rounded,
+                                      label: "Ayna",
+                                      isActive: isFlipped,
+                                      activeColor: Colors.blueAccent,
+                                      onTap: () {
+                                        HapticFeedback.selectionClick();
+                                        setState(() => isFlipped = !isFlipped);
+                                      }),
+                                  const SizedBox(width: 10),
                                   _buildModernBtn(
-                                    icon: Icons.grid_on,
-                                    label: _gridMode == 0
-                                        ? "Izgara"
-                                        : "${_gridMode}x",
-                                    isActive: _gridMode > 0,
-                                    activeColor: Colors.greenAccent,
-                                    onTap: toggleGrid,
-                                  ),
-                                  const SizedBox(width: 8),
+                                      icon: Icons.grid_on_rounded,
+                                      label: _gridMode == 0
+                                          ? "Izgara"
+                                          : "${_gridMode}x",
+                                      isActive: _gridMode > 0,
+                                      activeColor: Colors.greenAccent,
+                                      onTap: toggleGrid),
+                                  const SizedBox(width: 10),
                                   _buildModernBtn(
-                                    icon: isFlashOn
-                                        ? Icons.flash_on
-                                        : Icons.flash_off,
-                                    label: "Flaş",
-                                    isActive: isFlashOn,
-                                    activeColor: Colors.amber,
-                                    onTap: () {
-                                      setState(() => isFlashOn = !isFlashOn);
-                                      controller?.setFlashMode(isFlashOn
-                                          ? FlashMode.torch
-                                          : FlashMode.off);
-                                    },
-                                  ),
+                                      icon: isFlashOn
+                                          ? Icons.flash_on_rounded
+                                          : Icons.flash_off_rounded,
+                                      label: "Flaş",
+                                      isActive: isFlashOn,
+                                      activeColor: Colors.yellowAccent,
+                                      onTap: () {
+                                        HapticFeedback.selectionClick();
+                                        setState(() => isFlashOn = !isFlashOn);
+                                        controller?.setFlashMode(isFlashOn
+                                            ? FlashMode.torch
+                                            : FlashMode.off);
+                                      }),
                                 ],
                               ),
                             ),
@@ -513,58 +634,51 @@ class _DrawingScreenState extends State<DrawingScreen> {
     );
   }
 
-  // --- MODERN BUTON WIDGET ---
-  Widget _buildModernBtn({
-    required IconData icon,
-    required String label,
-    required bool isActive,
-    required Color activeColor,
-    required VoidCallback onTap,
-    bool isPulse = false,
-  }) {
+  // --- MODERN BUTON TASARIMI ---
+  Widget _buildModernBtn(
+      {required IconData icon,
+      required String label,
+      required bool isActive,
+      required Color activeColor,
+      required VoidCallback onTap,
+      bool isPulse = false}) {
     return GestureDetector(
       onTap: onTap,
       child: Column(
         children: [
           AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.all(10),
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               gradient: isActive
                   ? LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [activeColor, activeColor.withOpacity(0.6)])
+                      colors: [activeColor, activeColor.withOpacity(0.7)])
                   : LinearGradient(colors: [
-                      Colors.white.withOpacity(0.1),
-                      Colors.white.withOpacity(0.05)
+                      Colors.white.withOpacity(0.08),
+                      Colors.white.withOpacity(0.04)
                     ]),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                   color: isActive
                       ? activeColor.withOpacity(0.5)
-                      : Colors.white.withOpacity(0.1),
-                  width: 1.5),
+                      : Colors.white.withOpacity(0.1)),
               boxShadow: isActive
                   ? [
                       BoxShadow(
-                        color: activeColor.withOpacity(0.4),
-                        blurRadius: isPulse ? 15 : 8,
-                        spreadRadius: isPulse ? 2 : 0,
-                        offset: const Offset(0, 2),
-                      )
+                          color: activeColor.withOpacity(0.4),
+                          blurRadius: isPulse ? 12 : 8)
                     ]
                   : [],
             ),
             child: Icon(icon,
-                color: isActive ? Colors.white : Colors.white70, size: 22),
+                color: isActive ? Colors.black87 : Colors.white70, size: 24),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(label,
               style: TextStyle(
                   color: isActive ? activeColor : Colors.white54,
-                  fontSize: 9,
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+                  fontSize: 10,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.normal)),
         ],
       ),
     );
@@ -576,16 +690,17 @@ class _DrawingScreenState extends State<DrawingScreen> {
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: isActive ? Colors.orangeAccent : Colors.white10,
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, color: Colors.white, size: 20),
+            color: isActive ? Colors.orangeAccent : Colors.white10,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withOpacity(0.1))),
+        child:
+            Icon(icon, color: isActive ? Colors.black : Colors.white, size: 18),
       ),
     );
   }
 }
 
-// PAINTERS
+// PAINTERS (DOKUNULMADI)
 class PaperFramePainter extends CustomPainter {
   final bool isLandscape;
   PaperFramePainter({required this.isLandscape});
@@ -595,7 +710,6 @@ class PaperFramePainter extends CustomPainter {
       ..color = Colors.white.withOpacity(0.8)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
-
     double screenW = size.width;
     double screenH = size.height;
     double rectW, rectH;
@@ -608,10 +722,10 @@ class PaperFramePainter extends CustomPainter {
     }
     double left = (screenW - rectW) / 2;
     double top = (screenH - rectH) / 2;
-
-    RRect rrect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(left, top, rectW, rectH), const Radius.circular(12));
-    canvas.drawRRect(rrect, paint);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(left, top, rectW, rectH), const Radius.circular(12)),
+        paint);
   }
 
   @override
@@ -624,9 +738,9 @@ class GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.3)
+      ..color = Colors.cyanAccent.withOpacity(0.2)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
+      ..strokeWidth = 0.8;
     double w = size.width / gridCount;
     double h = size.height / gridCount;
     for (int i = 1; i < gridCount; i++) {
