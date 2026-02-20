@@ -128,16 +128,17 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   v.Vector4 _combinedRotation() {
     final tiltDeg = _tiltMode == 0 ? 0.0 : (_tiltMode == 1 ? 15.0 : 30.0);
 
-    // ✅ ZEMİNE YAPIŞTIRMA FİX 2: Eskiden burada -math.pi / 2 vardı ve modeli ayağa kaldırıyordu!
-    // Sıfır (0.0) yaparak Blender'dan geldiği gibi düz (masaya serilmiş) kalmasını sağladık.
+    // ✅ ÇÖZÜM 1 (DİK DURMA SORUNU): Resmin AR'da masaya yatması için X ekseninde -90 derece dönmesi gerekir.
+    // Senin kodunda burası 0.0 idi, o yüzden resim havada dik duruyordu.
     final qBase = v.Quaternion.axisAngle(
       v.Vector3(1, 0, 0),
-      0.0,
+      -math.pi / 2,
     );
 
     double yawDeg = (_rotYDeg + 180.0) % 360.0;
     if (_mirrored) yawDeg = (360.0 - yawDeg) % 360.0;
 
+    // ✅ ÇÖZÜM 3 (YAN DÖNME SORUNU): Resim yattığı için artık Dünya Y ekseni, resmin kendi merkezinde (plak gibi) dönmesini sağlar.
     final qYawWorld = v.Quaternion.axisAngle(
       v.Vector3(0, 1, 0),
       _degToRad(yawDeg),
@@ -422,7 +423,7 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                         PlaneDetectionConfig.horizontalAndVertical,
                   ),
 
-                  // ✅ 2. KATMAN: RAKİBİN YAPTIĞI "SAYDAMLIKLI İLLÜZYON MODU"
+                  // ✅ 2. KATMAN: RAKİBİN YAPTIĞI "SAYDAMLIKLI İLLÜZYON MODU" (ÇİZİM MODU)
                   if (_useIllusionMode)
                     Positioned.fill(
                       child: Center(
@@ -432,11 +433,12 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                             alignment: FractionalOffset.center,
                             transform: Matrix4.identity()
                               ..setEntry(3, 2, 0.001) // 3D Derinlik
+                              // ✅ ÇÖZÜM 1 (İllüzyon Modu Dik Durma): Eğim butonuna (tiltMode) basmadığında resim masada YATAY başlar (65 derece).
                               ..rotateX(_degToRad(_tiltMode == 0
-                                  ? 0
+                                  ? 65.0
                                   : (_tiltMode == 1
                                       ? 45.0
-                                      : 65.0))) // Yere Yatma
+                                      : 0.0))) // Yere Yatma
                               ..rotateZ(
                                   _degToRad(_rotYDeg)) // Kendi ekseninde dönme
                               ..translate(_posX, _posZ), // Parmağınla sürükleme
@@ -542,7 +544,7 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ✅ YENİ OPACITY SLIDER (Sadece Çizim modunda görünür)
+                // ✅ ÇÖZÜM 2 (OPACITY SLIDER): Sadece Çizim modunda görünür ve Opacity'i ayarlar.
                 if (_useIllusionMode)
                   Container(
                     margin: const EdgeInsets.only(bottom: 10),
