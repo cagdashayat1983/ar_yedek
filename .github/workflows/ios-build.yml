@@ -5,21 +5,28 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4 # v3 yerine v4
+      - uses: actions/checkout@v4
       
       - name: Flutter'i Kur
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           
-      - name: Paketleri Getir
-        run: flutter pub get
+      - name: Paketleri Getir ve Hazirla
+        run: |
+          flutter pub get
+          # iOS klasorune gidip podlari kuruyoruz
+          cd ios
+          rm -rf Pods
+          rm -rf Podfile.lock
+          pod install --repo-update
+          cd ..
         
       - name: iOS Build Al (Imzasiz)
         run: flutter build ios --release --no-codesign
         
       - name: Dosyayi Yukle (Artifact)
-        uses: actions/upload-artifact@v4 # Hata veren v3 yerine v4 yapildi
+        uses: actions/upload-artifact@v4
         with:
           name: ios-app-dosyasi
           path: build/ios/iphoneos/Runner.app
