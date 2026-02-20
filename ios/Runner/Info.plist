@@ -2,10 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>NSPhotoLibraryUsageDescription</key>
-    <string>Profil fotoğrafı seçmek için galeriye erişim izni gerekiyor.</string>
-    <key>NSCameraUsageDescription</key>
-    <string>Fotoğraf çekmek için kameraya erişim izni gerekiyor.</string>
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
@@ -34,11 +30,14 @@
     <string>Main</string>
 
     <key>NSCameraUsageDescription</key>
-    <string>Uygulamanın AR (Artırılmış Gerçeklik) deneyimi sunabilmesi için kamera erişimi gereklidir.</string>
+    <string>AR (Artırılmış Gerçeklik) deneyimi sunabilmemiz ve fotoğraf çekebilmeniz için kameranıza erişim izni gereklidir.</string>
+    
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>Galerinizden resim seçip AR dünyasına ekleyebilmeniz için fotoğraf kütüphanesi erişimi gereklidir.</string>
+    <string>Profil fotoğrafı seçmek ve galerinizden resim alıp AR dünyasına ekleyebilmeniz için fotoğraf kütüphanesi erişimi gereklidir.</string>
+    
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>AR görüntülerini galerinize kaydedebilmek için izin gereklidir.</string>
+    
     <key>NSMicrophoneUsageDescription</key>
     <string>AR deneyimi sırasında ses kaydı gerekebileceği için mikrofon erişimi gereklidir.</string>
     
@@ -58,6 +57,7 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
+    
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
     <key>UIApplicationSupportsIndirectInputEvents</key>
