@@ -5,7 +5,7 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4 # v3 yerine v4
       
       - name: Flutter'i Kur
         uses: subosito/flutter-action@v2
@@ -19,7 +19,7 @@ jobs:
         run: flutter build ios --release --no-codesign
         
       - name: Dosyayi Yukle (Artifact)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4 # Hata veren v3 yerine v4 yapildi
         with:
           name: ios-app-dosyasi
           path: build/ios/iphoneos/Runner.app
