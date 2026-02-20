@@ -7,25 +7,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Flutter'i Kur
+      - name: Flutter Kur
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           
-      - name: Paketleri Getir ve Hazirla
+      - name: Zorunlu Temizlik ve Bagimliliklar
         run: |
           flutter pub get
-          # iOS klasorune gidip podlari kuruyoruz
           cd ios
           rm -rf Pods
-          rm -rf Podfile.lock
-          pod install --repo-update
+          rm -f Podfile.lock
+          pod repo update
+          pod install
           cd ..
         
-      - name: iOS Build Al (Imzasiz)
+      - name: iOS Build Al
         run: flutter build ios --release --no-codesign
         
-      - name: Dosyayi Yukle (Artifact)
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: ios-app-dosyasi
