@@ -243,6 +243,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
             child: ARKitSceneView(
               onARKitViewCreated: _onARKitViewCreated,
               planeDetection: ARPlaneDetection.horizontal,
+              enableTapRecognizer: true, // ✅ İŞTE EKLENEN KRİTİK KOD BURADA
             ),
           ),
           if (_gridMode > 0)
