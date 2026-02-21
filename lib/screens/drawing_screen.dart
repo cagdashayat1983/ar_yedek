@@ -16,7 +16,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/category_model.dart';
-import '../ar_mini_test_screen.dart';
+import 'ar_mini_test_screen.dart';
 
 class DrawingScreen extends StatefulWidget {
   final CategoryModel category;

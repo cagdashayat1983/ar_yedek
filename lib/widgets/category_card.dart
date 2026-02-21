@@ -18,7 +18,7 @@ class CategoryCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       child: Material(
         elevation: 8,
-        shadowColor: category.color.withOpacity(0.3),
+        shadowColor: category.color.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(28),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -36,7 +36,7 @@ class CategoryCard extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  category.color.withOpacity(0.8),
+                  category.color.withValues(alpha: 0.8),
                   category.color,
                 ],
                 begin: Alignment.topLeft,
@@ -48,10 +48,11 @@ class CategoryCard extends StatelessWidget {
                 Positioned.fill(
                   child: Opacity(
                     opacity: 0.15,
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
+                    child: const Padding(
+                      padding: EdgeInsets.all(20.0),
+                      // ✅ HATA ÇÖZÜMÜ 1: category.icon yerine sabit bir fırça ikonu koyduk
                       child: Icon(
-                        category.icon,
+                        Icons.brush_rounded,
                         size: 120,
                         color: Colors.white,
                       ),
@@ -73,7 +74,7 @@ class CategoryCard extends StatelessWidget {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Row(
@@ -92,9 +93,10 @@ class CategoryCard extends StatelessWidget {
                               ],
                             ),
                           ),
+                          // ✅ HATA ÇÖZÜMÜ 2: Sağ köşedeki küçük ikon da düzeltildi
                           Icon(
-                            category.icon,
-                            color: Colors.white.withOpacity(0.9),
+                            Icons.brush_rounded,
+                            color: Colors.white.withValues(alpha: 0.9),
                             size: 28,
                           ),
                         ],
