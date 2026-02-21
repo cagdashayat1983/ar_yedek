@@ -38,8 +38,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
   double _baseRotZRad = 0.0;
-  double _baseX = 0.0;
-  double _baseZ = 0.0;
+  // Sürükleme (Pan) hatasını düzeltmek için base pozisyonları iptal ettik.
 
   double _opacity = 0.6;
 
@@ -88,6 +87,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
+        // ✅ KARANLIK SORUNU ÇÖZÜLDÜ: Emission, resmin ışıksız ortamda bile kendi kendine %100 parlak yanmasını sağlar.
+        emission: ARKitMaterialProperty.image(widget.imagePath),
         transparency: _opacity,
         doubleSided: true,
       );
@@ -108,6 +109,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         geometry: plane,
         position: position,
         scale: v.Vector3.all(_scale),
+        // ✅ RESMİ YATIRMA KODU (İlk fotondaki gibi masaya jilet gibi serer)
         eulerAngles: v.Vector3(-math.pi / 2, 0, _rotZRad),
       );
 
@@ -142,35 +144,37 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     final newMaterial = ARKitMaterial(
       diffuse: ARKitMaterialProperty.image(widget.imagePath),
+      emission: ARKitMaterialProperty.image(widget.imagePath),
       transparency: _opacity,
       doubleSided: true,
     );
 
-    // Yalnızca materyal listesini güncelliyoruz
     imageNode!.geometry!.materials.value = [newMaterial];
   }
 
+  // JEST (GESTURE) BAŞLANGICI
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
     _baseRotZRad = _rotZRad;
-    _baseX = _posX;
-    _baseZ = _posZ;
   }
 
+  // ✅ KORKUNÇ "DİK ÇİZGİ" HATASINI ÇÖZEN JEST HAREKETİ
   void _onScaleUpdate(ScaleUpdateDetails d) {
     if (!_hasModel || _tapLocked) return;
 
-    if (d.pointerCount > 1) {
-      setState(() {
+    setState(() {
+      if (d.pointerCount > 1) {
+        // İKİ PARMAK: Büyütme/Küçültme ve Döndürme
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
         _rotZRad = _baseRotZRad + d.rotation;
-      });
-    } else {
-      setState(() {
-        _posX = _baseX + (d.focalPointDelta.dx * 0.0015);
-        _posZ = _baseZ + (d.focalPointDelta.dy * 0.0015);
-      });
-    }
+      } else {
+        // TEK PARMAK: Sürükleme (Pan)
+        // Burada sürekli başlangıç noktasına döndüren formülü sildik. Artık parmak nereye giderse yağ gibi oraya kayacak!
+        _posX += d.focalPointDelta.dx * 0.002;
+        _posZ += d.focalPointDelta.dy * 0.002;
+      }
+    });
+
     _updateNodeTransform();
   }
 
@@ -242,7 +246,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
             enableTapRecognizer: true,
           ),
 
-          // 2. ŞEFFAF KONTROL CAMI (JEST SORUNU ÇÖZÜMÜ)
+          // 2. ŞEFFAF KONTROL CAMI (TÜM PARMAK HAREKETLERİNİ BU EMMER)
           if (_hasModel)
             Positioned.fill(
               child: GestureDetector(
@@ -264,6 +268,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                 ),
               ),
             ),
+
+          // ÜST BAR
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
@@ -313,6 +319,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
               ),
             ),
           ),
+
+          // ALT KONTROLLER
           Positioned(
             left: 10,
             right: 10,
