@@ -38,7 +38,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
   double _baseRotZRad = 0.0;
-  // Sürükleme (Pan) hatasını düzeltmek için base pozisyonları iptal ettik.
 
   double _opacity = 0.6;
 
@@ -87,7 +86,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
-        // ✅ KARANLIK SORUNU ÇÖZÜLDÜ: Emission, resmin ışıksız ortamda bile kendi kendine %100 parlak yanmasını sağlar.
+        // Karanlık ortamda parlaması için emission ayarı
         emission: ARKitMaterialProperty.image(widget.imagePath),
         transparency: _opacity,
         doubleSided: true,
@@ -109,8 +108,10 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         geometry: plane,
         position: position,
         scale: v.Vector3.all(_scale),
-        // ✅ RESMİ YATIRMA KODU (İlk fotondaki gibi masaya jilet gibi serer)
-        eulerAngles: v.Vector3(-math.pi / 2, 0, _rotZRad),
+        // 🔴 DÜZELTİLEN SATIR BURASI!
+        // Eskiden: v.Vector3(-math.pi / 2, 0, _rotZRad) -> Bu onu ayağa kaldırıyordu.
+        // Şimdi: v.Vector3(0, 0, _rotZRad) -> Sadece senin döndürme açını (Z) kullan, X ekseninde dikme (0 yap).
+        eulerAngles: v.Vector3(0, 0, _rotZRad),
       );
 
       arkitController!.add(imageNode!);
@@ -129,7 +130,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
     final newScale = v.Vector3.all(_scale);
-    final newRotation = v.Vector3(-math.pi / 2, 0, _rotZRad);
+
+    // Burada da aynı düzeltme: Sadece Z ekseninde (kendi etrafında) dönmesine izin veriyoruz.
+    final newRotation = v.Vector3(0, 0, _rotZRad);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -158,7 +161,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     _baseRotZRad = _rotZRad;
   }
 
-  // ✅ KORKUNÇ "DİK ÇİZGİ" HATASINI ÇÖZEN JEST HAREKETİ
+  // JEST HAREKETİ (Sürükleme ve Döndürme)
   void _onScaleUpdate(ScaleUpdateDetails d) {
     if (!_hasModel || _tapLocked) return;
 
@@ -169,7 +172,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         _rotZRad = _baseRotZRad + d.rotation;
       } else {
         // TEK PARMAK: Sürükleme (Pan)
-        // Burada sürekli başlangıç noktasına döndüren formülü sildik. Artık parmak nereye giderse yağ gibi oraya kayacak!
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
       }
@@ -246,7 +248,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
             enableTapRecognizer: true,
           ),
 
-          // 2. ŞEFFAF KONTROL CAMI (TÜM PARMAK HAREKETLERİNİ BU EMMER)
+          // 2. ŞEFFAF KONTROL CAMI
           if (_hasModel)
             Positioned.fill(
               child: GestureDetector(
