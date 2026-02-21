@@ -136,7 +136,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     arkitController?.update(nodeName!, node: imageNode!);
   }
 
-  // ✅ HATA ÇÖZÜLDÜ: Geometry sabit kalır, sadece üzerindeki kıyafet (Material) değişir.
   void _updateOpacity(double newOpacity) {
     setState(() => _opacity = newOpacity);
     if (!_hasModel || nodeName == null) return;
@@ -159,7 +158,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
-    if (!_hasModel) return;
+    if (!_hasModel || _tapLocked) return;
 
     if (d.pointerCount > 1) {
       setState(() {
@@ -168,8 +167,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       });
     } else {
       setState(() {
-        _posX = _baseX + (d.focalPointDelta.dx * 0.002);
-        _posZ = _baseZ + (d.focalPointDelta.dy * 0.002);
+        _posX = _baseX + (d.focalPointDelta.dx * 0.0015);
+        _posZ = _baseZ + (d.focalPointDelta.dy * 0.0015);
       });
     }
     _updateNodeTransform();
@@ -236,16 +235,26 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onScaleStart: _onScaleStart,
-            onScaleUpdate: _onScaleUpdate,
-            child: ARKitSceneView(
-              onARKitViewCreated: _onARKitViewCreated,
-              planeDetection: ARPlaneDetection.horizontal,
-              enableTapRecognizer: true, // ✅ İŞTE EKLENEN KRİTİK KOD BURADA
-            ),
+          // 1. AR KAMERASI
+          ARKitSceneView(
+            onARKitViewCreated: _onARKitViewCreated,
+            planeDetection: ARPlaneDetection.horizontal,
+            enableTapRecognizer: true,
           ),
+
+          // 2. ŞEFFAF KONTROL CAMI (JEST SORUNU ÇÖZÜMÜ)
+          if (_hasModel)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onScaleStart: _onScaleStart,
+                onScaleUpdate: _onScaleUpdate,
+                child: Container(
+                  color: Colors.transparent,
+                ),
+              ),
+            ),
+
           if (_gridMode > 0)
             IgnorePointer(
               child: Positioned.fill(
