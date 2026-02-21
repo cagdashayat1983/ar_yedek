@@ -30,16 +30,17 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   int _tiltMode = 0;
 
   double _scale = 0.3;
-  // ✅ SENİN ASIL İSTEDİĞİN DÜZELTME BURADA:
-  // Resim masada dikey (portre) gelmesin diye başlangıç açısını yatay (-90 derece) yaptık.
-  double _rotZRad = -math.pi / 2;
   double _liftMeters = 0.0;
 
   double _posX = 0.0;
   double _posZ = -0.5;
 
   double _baseScale = 0.3;
-  double _baseRotZRad = 0.0;
+
+  // ✅ MATEMATİKSEL ÇÖZÜM: Döndürme ekseni Z'den Y'ye alındı.
+  // Başlangıç açısı -90 derece yapıldı ki masaya konduğunda sana dikey değil, tam YATAY baksın!
+  double _rotYRad = -math.pi / 2;
+  double _baseRotYRad = 0.0;
 
   double _opacity = 0.6;
 
@@ -88,8 +89,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
-        // Karanlıkta parlaması için
-        emission: ARKitMaterialProperty.image(widget.imagePath),
+        emission: ARKitMaterialProperty.image(
+            widget.imagePath), // Parlaklık korunuyor
         transparency: _opacity,
         doubleSided: true,
       );
@@ -110,8 +111,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         geometry: plane,
         position: position,
         scale: v.Vector3.all(_scale),
-        // ✅ BENİM BOZDUĞUM YERİ GERİ GETİRDİM: Resmi masaya jilet gibi yatıran asıl kod bu! (-math.pi / 2)
-        eulerAngles: v.Vector3(-math.pi / 2, 0, _rotZRad),
+        // ✅ EKSEN DÜZELTİLDİ: X=-90 (Masaya jilet gibi yatar), Y=_rotYRad (Masanın üstünde döner), Z=0 (Asla ayağa kalkmaz)
+        eulerAngles: v.Vector3(-math.pi / 2, _rotYRad, 0),
       );
 
       arkitController!.add(imageNode!);
@@ -131,8 +132,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
     final newScale = v.Vector3.all(_scale);
 
-    // ✅ BURAYI DA DÜZELTTİM: Hareket ettirdiğinde de yatay kalmaya devam edecek.
-    final newRotation = v.Vector3(-math.pi / 2, 0, _rotZRad);
+    // ✅ GÜNCELLEMEDE DE AYNISI: Asla ayağa kalkmasına izin vermiyoruz.
+    final newRotation = v.Vector3(-math.pi / 2, _rotYRad, 0);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -155,23 +156,20 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     imageNode!.geometry!.materials.value = [newMaterial];
   }
 
-  // JEST (GESTURE) BAŞLANGICI
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
-    _baseRotZRad = _rotZRad;
+    _baseRotYRad = _rotYRad;
   }
 
-  // JEST HAREKETİ (Sürükleme ve Döndürme)
   void _onScaleUpdate(ScaleUpdateDetails d) {
     if (!_hasModel || _tapLocked) return;
 
     setState(() {
       if (d.pointerCount > 1) {
-        // İKİ PARMAK: Büyütme/Küçültme ve Döndürme
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        _rotZRad = _baseRotZRad + d.rotation;
+        // ✅ DÖNDÜRME DE Y EKSENİNDE
+        _rotYRad = _baseRotYRad + d.rotation;
       } else {
-        // TEK PARMAK: Sürükleme (Pan) - Yağ gibi kayacak
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
       }
@@ -188,7 +186,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       imageNode = null;
       nodeName = null;
       _scale = 0.3;
-      _rotZRad = -math.pi / 2; // Temizlendiğinde yine yatay başlasın
+      _rotYRad = -math.pi / 2; // Temizlendiğinde yine yatay başlasın
       _liftMeters = 0.0;
       _tiltMode = 0;
       _mirrored = false;
@@ -214,7 +212,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _rotPlus90() {
-    setState(() => _rotZRad += (math.pi / 2));
+    setState(() => _rotYRad += (math.pi / 2));
     _updateNodeTransform();
   }
 
@@ -241,14 +239,11 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. AR KAMERASI
           ARKitSceneView(
             onARKitViewCreated: _onARKitViewCreated,
             planeDetection: ARPlaneDetection.horizontal,
             enableTapRecognizer: true,
           ),
-
-          // 2. ŞEFFAF KONTROL CAMI
           if (_hasModel)
             Positioned.fill(
               child: GestureDetector(
@@ -260,7 +255,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                 ),
               ),
             ),
-
           if (_gridMode > 0)
             IgnorePointer(
               child: Positioned.fill(
@@ -270,8 +264,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                 ),
               ),
             ),
-
-          // ÜST BAR
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
@@ -321,8 +313,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
               ),
             ),
           ),
-
-          // ALT KONTROLLER
           Positioned(
             left: 10,
             right: 10,
