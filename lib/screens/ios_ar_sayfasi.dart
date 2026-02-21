@@ -30,7 +30,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   int _tiltMode = 0;
 
   double _scale = 0.3;
-  double _rotZRad = 0.0;
+  // ✅ SENİN ASIL İSTEDİĞİN DÜZELTME BURADA:
+  // Resim masada dikey (portre) gelmesin diye başlangıç açısını yatay (-90 derece) yaptık.
+  double _rotZRad = -math.pi / 2;
   double _liftMeters = 0.0;
 
   double _posX = 0.0;
@@ -86,7 +88,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
-        // Karanlık ortamda parlaması için emission ayarı
+        // Karanlıkta parlaması için
         emission: ARKitMaterialProperty.image(widget.imagePath),
         transparency: _opacity,
         doubleSided: true,
@@ -108,10 +110,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         geometry: plane,
         position: position,
         scale: v.Vector3.all(_scale),
-        // 🔴 DÜZELTİLEN SATIR BURASI!
-        // Eskiden: v.Vector3(-math.pi / 2, 0, _rotZRad) -> Bu onu ayağa kaldırıyordu.
-        // Şimdi: v.Vector3(0, 0, _rotZRad) -> Sadece senin döndürme açını (Z) kullan, X ekseninde dikme (0 yap).
-        eulerAngles: v.Vector3(0, 0, _rotZRad),
+        // ✅ BENİM BOZDUĞUM YERİ GERİ GETİRDİM: Resmi masaya jilet gibi yatıran asıl kod bu! (-math.pi / 2)
+        eulerAngles: v.Vector3(-math.pi / 2, 0, _rotZRad),
       );
 
       arkitController!.add(imageNode!);
@@ -131,8 +131,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
     final newScale = v.Vector3.all(_scale);
 
-    // Burada da aynı düzeltme: Sadece Z ekseninde (kendi etrafında) dönmesine izin veriyoruz.
-    final newRotation = v.Vector3(0, 0, _rotZRad);
+    // ✅ BURAYI DA DÜZELTTİM: Hareket ettirdiğinde de yatay kalmaya devam edecek.
+    final newRotation = v.Vector3(-math.pi / 2, 0, _rotZRad);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -171,7 +171,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
         _rotZRad = _baseRotZRad + d.rotation;
       } else {
-        // TEK PARMAK: Sürükleme (Pan)
+        // TEK PARMAK: Sürükleme (Pan) - Yağ gibi kayacak
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
       }
@@ -188,7 +188,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       imageNode = null;
       nodeName = null;
       _scale = 0.3;
-      _rotZRad = 0.0;
+      _rotZRad = -math.pi / 2; // Temizlendiğinde yine yatay başlasın
       _liftMeters = 0.0;
       _tiltMode = 0;
       _mirrored = false;
