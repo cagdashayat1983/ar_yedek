@@ -17,12 +17,8 @@ class IosArSayfasi extends StatefulWidget {
 
 class _IosArSayfasiState extends State<IosArSayfasi> {
   ARKitController? arkitController;
-
-  // ✅ Taşıyıcı tepsi (hareket + plak dönüş + scale sadece burada)
-  ARKitNode? parentNode;
-
-  // ✅ Resim (tepsiye sabitlenir)
   ARKitNode? imageNode;
+  String? nodeName;
 
   bool _placing = false;
   bool _tapLocked = false;
@@ -34,27 +30,24 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   int _tiltMode = 0;
 
   double _scale = 0.3;
-  double _baseScale = 0.3;
-
   double _liftMeters = 0.0;
 
   double _posX = 0.0;
   double _posZ = -0.5;
 
-  // ✅ Plak gibi dönüş: sadece yaw (Y ekseni)
-  double _yawRad = 0.0;
-  double _baseYawRad = 0.0;
+  double _baseScale = 0.3;
 
-  // ✅ Resmi kendi içinde "manzara" yapmak için:
-  // Yanlışsa: 0 / +pi/2 / -pi/2 dene.
-  double _inPlaneRad = math.pi / 2;
+  // ✅ MATEMATİKSEL ÇÖZÜM: Döndürme ekseni Z'den Y'ye alındı.
+  // Başlangıç açısı -90 derece yapıldı ki masaya konduğunda sana dikey değil, tam YATAY baksın!
+  double _rotYRad = -math.pi / 2;
+  double _baseRotYRad = 0.0;
 
   double _opacity = 0.6;
 
   Timer? _toastTimer;
   String _toastText = "";
 
-  bool get _hasModel => parentNode != null;
+  bool get _hasModel => imageNode != null;
 
   void _showToast(String msg) {
     if (!mounted) return;
@@ -96,7 +89,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
-        emission: ARKitMaterialProperty.image(widget.imagePath),
+        emission: ARKitMaterialProperty.image(
+            widget.imagePath), // Parlaklık korunuyor
         transparency: _opacity,
         doubleSided: true,
       );
@@ -109,28 +103,20 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
       _posX = hit.worldTransform.getColumn(3).x;
       _posZ = hit.worldTransform.getColumn(3).z;
-      final startY = hit.worldTransform.getColumn(3).y + _liftMeters;
 
-      // 1) ✅ TEPSİ: sadece bu hareket eder/döner
-      parentNode = ARKitNode(
-        position: v.Vector3(_posX, startY, _posZ),
-        scale: v.Vector3.all(_scale),
-        // ✅ plak gibi: sadece Y ekseni
-        eulerAngles: v.Vector3(0, _yawRad, 0),
-      );
-      arkitController!.add(parentNode!);
+      final position = v.Vector3(
+          _posX, hit.worldTransform.getColumn(3).y + _liftMeters, _posZ);
 
-      // 2) ✅ RESİM: (ÖNEMLİ) burada -pi/2 YOK!
-      // ARKitPlane çoğu sürümde zaten yatay gelir.
-      // Manzara yönünü Z ile çeviriyoruz.
       imageNode = ARKitNode(
         geometry: plane,
-        position: v.Vector3.zero(),
-        eulerAngles: v.Vector3(0, 0, _inPlaneRad),
+        position: position,
+        scale: v.Vector3.all(_scale),
+        // ✅ EKSEN DÜZELTİLDİ: X=-90 (Masaya jilet gibi yatar), Y=_rotYRad (Masanın üstünde döner), Z=0 (Asla ayağa kalkmaz)
+        eulerAngles: v.Vector3(-math.pi / 2, _rotYRad, 0),
       );
 
-      arkitController!.add(imageNode!, parentNodeName: parentNode!.name);
-
+      arkitController!.add(imageNode!);
+      nodeName = imageNode!.name;
       _showToast("✅ Resim Masaya Serildi!");
       setState(() {});
     } catch (e) {
@@ -140,19 +126,25 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     }
   }
 
-  void _updateParentTransform() {
-    if (!_hasModel) return;
+  void _updateNodeTransform() {
+    if (!_hasModel || nodeName == null) return;
 
-    parentNode!.position = v.Vector3(_posX, parentNode!.position.y, _posZ);
-    parentNode!.scale = v.Vector3.all(_scale);
-    parentNode!.eulerAngles = v.Vector3(0, _yawRad, 0);
+    final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
+    final newScale = v.Vector3.all(_scale);
 
-    arkitController?.update(parentNode!.name, node: parentNode!);
+    // ✅ GÜNCELLEMEDE DE AYNISI: Asla ayağa kalkmasına izin vermiyoruz.
+    final newRotation = v.Vector3(-math.pi / 2, _rotYRad, 0);
+
+    imageNode!.position = newPosition;
+    imageNode!.scale = newScale;
+    imageNode!.eulerAngles = newRotation;
+
+    arkitController?.update(nodeName!, node: imageNode!);
   }
 
   void _updateOpacity(double newOpacity) {
     setState(() => _opacity = newOpacity);
-    if (imageNode == null) return;
+    if (!_hasModel || nodeName == null) return;
 
     final newMaterial = ARKitMaterial(
       diffuse: ARKitMaterialProperty.image(widget.imagePath),
@@ -166,7 +158,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
-    _baseYawRad = _yawRad;
+    _baseRotYRad = _rotYRad;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
@@ -174,47 +166,36 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     setState(() {
       if (d.pointerCount > 1) {
-        // ✅ 2 parmak: büyüt + plak gibi döndür
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        _yawRad = _baseYawRad + d.rotation;
+        // ✅ DÖNDÜRME DE Y EKSENİNDE
+        _rotYRad = _baseRotYRad + d.rotation;
       } else {
-        // ✅ 1 parmak: sürükle
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
       }
     });
 
-    _updateParentTransform();
+    _updateNodeTransform();
   }
 
   void _clearAll() {
-    if (parentNode != null) {
-      arkitController?.remove(parentNode!.name);
+    if (nodeName != null) {
+      arkitController?.remove(nodeName!);
     }
     setState(() {
-      parentNode = null;
       imageNode = null;
-
+      nodeName = null;
       _scale = 0.3;
-      _baseScale = 0.3;
-
-      _yawRad = 0.0;
-      _baseYawRad = 0.0;
-
+      _rotYRad = -math.pi / 2; // Temizlendiğinde yine yatay başlasın
       _liftMeters = 0.0;
       _tiltMode = 0;
       _mirrored = false;
-
-      _inPlaneRad = math.pi / 2;
     });
     _showToast("Temizlendi. Tekrar dokunabilirsin.");
   }
 
-  void _toggleGrid() => setState(
-        () => _gridMode = (_gridMode == 0)
-            ? 3
-            : (_gridMode == 3 ? 4 : (_gridMode == 4 ? 5 : 0)),
-      );
+  void _toggleGrid() => setState(() => _gridMode =
+      (_gridMode == 0) ? 3 : (_gridMode == 3 ? 4 : (_gridMode == 4 ? 5 : 0)));
 
   void _toggleTilt() {
     setState(() => _tiltMode = (_tiltMode + 1) % 3);
@@ -222,33 +203,31 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _toggleMirror() {
     setState(() => _mirrored = !_mirrored);
-    if (parentNode != null) {
-      final currentScale = parentNode!.scale;
-      parentNode!.scale =
+    if (_hasModel && nodeName != null) {
+      final currentScale = imageNode!.scale;
+      imageNode!.scale =
           v.Vector3(-currentScale.x, currentScale.y, currentScale.z);
-      arkitController?.update(parentNode!.name, node: parentNode!);
+      arkitController?.update(nodeName!, node: imageNode!);
     }
   }
 
   void _rotPlus90() {
-    setState(() => _yawRad += (math.pi / 2));
-    _updateParentTransform();
+    setState(() => _rotYRad += (math.pi / 2));
+    _updateNodeTransform();
   }
 
   void _liftUp() {
-    if (parentNode == null) return;
+    if (!_hasModel || nodeName == null) return;
     setState(() => _liftMeters += 0.01);
-    parentNode!.position =
-        v.Vector3(_posX, parentNode!.position.y + 0.01, _posZ);
-    arkitController?.update(parentNode!.name, node: parentNode!);
+    imageNode!.position = v.Vector3(_posX, imageNode!.position.y + 0.01, _posZ);
+    arkitController?.update(nodeName!, node: imageNode!);
   }
 
   void _liftDown() {
-    if (parentNode == null) return;
+    if (!_hasModel || nodeName == null) return;
     setState(() => _liftMeters -= 0.01);
-    parentNode!.position =
-        v.Vector3(_posX, parentNode!.position.y - 0.01, _posZ);
-    arkitController?.update(parentNode!.name, node: parentNode!);
+    imageNode!.position = v.Vector3(_posX, imageNode!.position.y - 0.01, _posZ);
+    arkitController?.update(nodeName!, node: imageNode!);
   }
 
   void _toggleFlash() => setState(() => _flashOn = !_flashOn);
@@ -271,7 +250,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                 behavior: HitTestBehavior.opaque,
                 onScaleStart: _onScaleStart,
                 onScaleUpdate: _onScaleUpdate,
-                child: Container(color: Colors.transparent),
+                child: Container(
+                  color: Colors.transparent,
+                ),
               ),
             ),
           if (_gridMode > 0)
@@ -310,27 +291,21 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                           onPressed: () {},
                           icon:
                               const Icon(Icons.apple, color: Colors.cyanAccent),
-                          label: const Text(
-                            "PRO AR MODU (iOS)",
-                            style: TextStyle(
-                              color: Colors.cyanAccent,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          label: const Text("PRO AR MODU (iOS)",
+                              style: TextStyle(
+                                  color: Colors.cyanAccent,
+                                  fontWeight: FontWeight.bold)),
                         ),
                         const Spacer(),
                         if (_toastText.isNotEmpty)
-                          Text(
-                            _toastText,
-                            style: const TextStyle(
-                                color: Colors.white70, fontSize: 12),
-                          ),
+                          Text(_toastText,
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 12)),
                         const Spacer(),
                         IconButton(
-                          onPressed: _clearAll,
-                          icon: const Icon(Icons.delete_outline,
-                              color: Colors.white),
-                        ),
+                            onPressed: _clearAll,
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.white)),
                       ],
                     ),
                   ),
@@ -349,9 +324,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(20)),
                   child: Row(
                     children: [
                       const Icon(Icons.opacity, color: Colors.white, size: 20),
@@ -378,7 +352,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(colors: [
                           Colors.black.withValues(alpha: 0.70),
-                          Colors.black.withValues(alpha: 0.50),
+                          Colors.black.withValues(alpha: 0.50)
                         ]),
                         borderRadius: BorderRadius.circular(35),
                         border: Border.all(
@@ -390,30 +364,27 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                         child: Row(
                           children: [
                             _btn(
-                              _isRecording
-                                  ? Icons.stop_circle_outlined
-                                  : Icons.videocam,
-                              _isRecording ? "Durdur" : "Kaydet",
-                              _isRecording,
-                              Colors.redAccent,
-                              _toggleRecording,
-                            ),
+                                _isRecording
+                                    ? Icons.stop_circle_outlined
+                                    : Icons.videocam,
+                                _isRecording ? "Durdur" : "Kaydet",
+                                _isRecording,
+                                Colors.redAccent,
+                                _toggleRecording),
                             const SizedBox(width: 8),
                             _btn(
-                              _tapLocked ? Icons.lock : Icons.lock_open,
-                              "Kilit",
-                              _tapLocked,
-                              Colors.redAccent,
-                              () => setState(() => _tapLocked = !_tapLocked),
-                            ),
+                                _tapLocked ? Icons.lock : Icons.lock_open,
+                                "Kilit",
+                                _tapLocked,
+                                Colors.redAccent,
+                                () => setState(() => _tapLocked = !_tapLocked)),
                             const SizedBox(width: 8),
                             _btn(
-                              Icons.view_in_ar,
-                              _tiltMode == 0 ? "Eğim" : "${_tiltMode}x",
-                              _tiltMode > 0,
-                              Colors.orangeAccent,
-                              _toggleTilt,
-                            ),
+                                Icons.view_in_ar,
+                                _tiltMode == 0 ? "Eğim" : "${_tiltMode}x",
+                                _tiltMode > 0,
+                                Colors.orangeAccent,
+                                _toggleTilt),
                             const SizedBox(width: 8),
                             _btn(Icons.flip, "Ayna", _mirrored,
                                 Colors.blueAccent, _toggleMirror),
@@ -428,20 +399,14 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                                 Colors.cyanAccent, _liftUp),
                             const SizedBox(width: 8),
                             _btn(
-                              Icons.grid_on,
-                              _gridMode == 0 ? "Izgara" : "${_gridMode}x",
-                              _gridMode > 0,
-                              Colors.greenAccent,
-                              _toggleGrid,
-                            ),
+                                Icons.grid_on,
+                                _gridMode == 0 ? "Izgara" : "${_gridMode}x",
+                                _gridMode > 0,
+                                Colors.greenAccent,
+                                _toggleGrid),
                             const SizedBox(width: 8),
-                            _btn(
-                              _flashOn ? Icons.flash_on : Icons.flash_off,
-                              "Flaş",
-                              _flashOn,
-                              Colors.amber,
-                              _toggleFlash,
-                            ),
+                            _btn(_flashOn ? Icons.flash_on : Icons.flash_off,
+                                "Flaş", _flashOn, Colors.amber, _toggleFlash),
                           ],
                         ),
                       ),
@@ -456,13 +421,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     );
   }
 
-  Widget _btn(
-    IconData icon,
-    String label,
-    bool isActive,
-    Color activeColor,
-    VoidCallback onTap,
-  ) {
+  Widget _btn(IconData icon, String label, bool isActive, Color activeColor,
+      VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -476,36 +436,31 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                       colors: [activeColor, activeColor.withValues(alpha: 0.6)])
                   : LinearGradient(colors: [
                       Colors.white.withValues(alpha: 0.12),
-                      Colors.white.withValues(alpha: 0.06),
+                      Colors.white.withValues(alpha: 0.06)
                     ]),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: isActive
-                    ? activeColor.withValues(alpha: 0.5)
-                    : Colors.white.withValues(alpha: 0.10),
-                width: 1.5,
-              ),
+                  color: isActive
+                      ? activeColor.withValues(alpha: 0.5)
+                      : Colors.white.withValues(alpha: 0.10),
+                  width: 1.5),
               boxShadow: isActive
                   ? [
                       BoxShadow(
-                        color: activeColor.withValues(alpha: 0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      )
+                          color: activeColor.withValues(alpha: 0.35),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2))
                     ]
                   : [],
             ),
             child: Icon(icon, color: Colors.white, size: 22),
           ),
           const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isActive ? activeColor : Colors.white54,
-              fontSize: 9,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
+          Text(label,
+              style: TextStyle(
+                  color: isActive ? activeColor : Colors.white54,
+                  fontSize: 9,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
         ],
       ),
     );
@@ -522,7 +477,6 @@ class GridPainter extends CustomPainter {
       ..color = Colors.cyanAccent.withValues(alpha: 0.3)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
-
     final w = size.width / gridCount;
     final h = size.height / gridCount;
 
