@@ -40,6 +40,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   double _rotYRad = -math.pi / 2;
   double _baseRotYRad = 0.0;
 
+  // ✅ Artık pinch rotation’da Z kullanılmayacak (takla sebebi)
   double _rotZRad = 0.0;
   double _baseRotZRad = 0.0;
 
@@ -110,21 +111,23 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         _posZ,
       );
 
-      // ✅ NEGATİF SCALE YOK (bozulmayı bitirir)
+      // ✅ NEGATİF SCALE YOK (ayna açıkken bozulma biter)
       final startScale = v.Vector3(_scale, _scale, _scale);
 
+      // ✅ Tilt
       double tiltAngle = 0.0;
-      if (_tiltMode == 1) tiltAngle = math.pi / 12;
-      if (_tiltMode == 2) tiltAngle = math.pi / 6;
+      if (_tiltMode == 1) tiltAngle = math.pi / 12; // 15 derece
+      if (_tiltMode == 2) tiltAngle = math.pi / 6; // 30 derece
 
-      // ✅ Mirror = X ekseninde 180° (plane düz kalır)
+      // ✅ Mirror = X ekseninde 180° çevir (takla/bozulma yok)
       final xAngle = (-math.pi / 2) + tiltAngle + (_mirrored ? math.pi : 0.0);
 
       imageNode = ARKitNode(
         geometry: plane,
         position: position,
         scale: startScale,
-        eulerAngles: v.Vector3(xAngle, _rotYRad, _rotZRad),
+        // ✅ Z = 0.0 (takla kesin biter)
+        eulerAngles: v.Vector3(xAngle, _rotYRad, 0.0),
       );
 
       arkitController!.add(imageNode!);
@@ -146,6 +149,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     // ✅ NEGATİF SCALE YOK
     final newScale = v.Vector3(_scale, _scale, _scale);
 
+    // ✅ Tilt
     double tiltAngle = 0.0;
     if (_tiltMode == 1) tiltAngle = math.pi / 12;
     if (_tiltMode == 2) tiltAngle = math.pi / 6;
@@ -153,7 +157,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     // ✅ Mirror = X ekseninde 180°
     final xAngle = (-math.pi / 2) + tiltAngle + (_mirrored ? math.pi : 0.0);
 
-    final newRotation = v.Vector3(xAngle, _rotYRad, _rotZRad);
+    // ✅ Z = 0.0
+    final newRotation = v.Vector3(xAngle, _rotYRad, 0.0);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -179,7 +184,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
     _baseRotYRad = _rotYRad;
-    _baseRotZRad = _rotZRad; // +90 butonu için kalsın
+    _baseRotZRad = _rotZRad;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
@@ -189,9 +194,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
 
-        // ✅ FIX: Pinch rotation artık Y eksenine (yaw) gider → bozulma biter
-        // ✅ Yön düzeltme: sola çevirince sola dönsün
-        _rotYRad = _baseRotYRad - d.rotation;
+        // ✅ PINCH ROTATION ARTIK YAW (plak gibi döner)
+        // Eğer yön ters gelirse + yerine - yap
+        _rotYRad = _baseRotYRad + d.rotation;
       } else {
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
@@ -232,7 +237,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _rotPlus90() {
-    setState(() => _rotZRad -= (math.pi / 2));
+    // ✅ +90 artık Y ekseninde (plak gibi)
+    setState(() => _rotYRad += (math.pi / 2));
     _updateNodeTransform();
   }
 
@@ -540,6 +546,7 @@ class GridPainter extends CustomPainter {
       canvas.drawLine(Offset(0, h * i), Offset(size.width, h * i), paint);
     }
 
+    // ✅ doğru çizim
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
   }
 
