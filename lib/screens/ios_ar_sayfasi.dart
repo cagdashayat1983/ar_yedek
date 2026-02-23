@@ -40,9 +40,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   double _rotYRad = -math.pi / 2;
   double _baseRotYRad = 0.0;
 
-  double _rotZRad = 0.0;
-  double _baseRotZRad = 0.0;
-
   double _opacity = 0.6;
 
   Timer? _toastTimer;
@@ -90,7 +87,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
-        emission: ARKitMaterialProperty.image(widget.imagePath),
+        emission: ARKitMaterialProperty.image(
+            widget.imagePath), // Parlaklık korunuyor
         transparency: _opacity,
         doubleSided: true,
       );
@@ -107,7 +105,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       final position = v.Vector3(
           _posX, hit.worldTransform.getColumn(3).y + _liftMeters, _posZ);
 
-      // ✅ DÜZELTME 1: Eğim Açısı Hesaplama (Yataylığa eklenecek)
+      // ✅ DÜZELTME 1: Eğim Açısı Hesaplama
       double tiltAngle = 0.0;
       if (_tiltMode == 1) tiltAngle = math.pi / 12; // 15 Derece
       if (_tiltMode == 2) tiltAngle = math.pi / 6; // 30 Derece
@@ -115,10 +113,10 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       imageNode = ARKitNode(
         geometry: plane,
         position: position,
-        // ✅ DÜZELTME 2: Aynalama başlangıçta doğru uygulansın
+        // ✅ DÜZELTME 2: Aynalama açıkken de scale bozulmasın diye burası korumaya alındı
         scale: v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale),
-        // Eğim yatay eksen olan -math.pi / 2'ye ekleniyor
-        eulerAngles: v.Vector3((-math.pi / 2) + tiltAngle, _rotYRad, _rotZRad),
+        // Eğim X eksenine ekleniyor, senin Y dönüşün korunuyor!
+        eulerAngles: v.Vector3((-math.pi / 2) + tiltAngle, _rotYRad, 0),
       );
 
       arkitController!.add(imageNode!);
@@ -137,16 +135,15 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
 
-    // ✅ DÜZELTME 2 (Devam): Büyütüp küçültürken ayna bozulmasın diye buraya da _mirrored eklendi
+    // ✅ DÜZELTME 2 (Devam): Pinch ile her büyüttüğünde Ayna eski haline dönmesin!
     final newScale = v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale);
 
-    // ✅ DÜZELTME 1 (Devam): Eğim güncellemeleri
+    // ✅ DÜZELTME 1 (Devam): Eğimi güncellemelerde de uyguluyoruz
     double tiltAngle = 0.0;
     if (_tiltMode == 1) tiltAngle = math.pi / 12;
     if (_tiltMode == 2) tiltAngle = math.pi / 6;
 
-    final newRotation =
-        v.Vector3((-math.pi / 2) + tiltAngle, _rotYRad, _rotZRad);
+    final newRotation = v.Vector3((-math.pi / 2) + tiltAngle, _rotYRad, 0);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -172,7 +169,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
     _baseRotYRad = _rotYRad;
-    _baseRotZRad = _rotZRad;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
@@ -181,8 +177,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        // ✅ DÜZELTME 3: Pinch yönü tersine çevrildi
-        _rotZRad = _baseRotZRad - d.rotation;
+        // ✅ DÜZELTME 3: Pinch yönü tersine çevrildi (+ yerine - kondu)
+        _rotYRad = _baseRotYRad - d.rotation;
       } else {
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
@@ -200,8 +196,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       imageNode = null;
       nodeName = null;
       _scale = 0.3;
-      _rotYRad = -math.pi / 2;
-      _rotZRad = 0.0;
+      _rotYRad = -math.pi / 2; // Temizlendiğinde yine yatay başlasın
       _liftMeters = 0.0;
       _tiltMode = 0;
       _mirrored = false;
@@ -214,16 +209,17 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _toggleTilt() {
     setState(() => _tiltMode = (_tiltMode + 1) % 3);
-    _updateNodeTransform(); // ✅ Eğim butonu basılır basılmaz tetiklensin
+    _updateNodeTransform(); // ✅ Eğim butonuna basıldığında anında resmi günceller
   }
 
   void _toggleMirror() {
     setState(() => _mirrored = !_mirrored);
-    _updateNodeTransform(); // ✅ Ayna butonu basılır basılmaz tetiklensin
+    _updateNodeTransform(); // ✅ Ayna butonuna basıldığında anında resmi günceller
   }
 
   void _rotPlus90() {
-    setState(() => _rotZRad -= (math.pi / 2));
+    // Döndürme yönü değiştiği için bu buton da ona göre uyarlandı
+    setState(() => _rotYRad -= (math.pi / 2));
     _updateNodeTransform();
   }
 
