@@ -37,11 +37,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
 
-  // Senin mükemmel açılış değerlerin (Dokunulmadı)
-  double _rotYRad = -math.pi / 2;
-  double _baseRotYRad = 0.0;
-
-  // SADECE PLAK GİBİ DÖNMESİ İÇİN EKLENEN Z EKSENİ
+  // ✅ PLAK GİBİ DÖNME: Z ekseninde döndürme yapılacak
   double _rotZRad = 0.0;
   double _baseRotZRad = 0.0;
 
@@ -92,8 +88,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
-        emission: ARKitMaterialProperty.image(
-            widget.imagePath), // Parlaklık korunuyor
+        emission: ARKitMaterialProperty.image(widget.imagePath),
         transparency: _opacity,
         doubleSided: true,
       );
@@ -114,8 +109,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         geometry: plane,
         position: position,
         scale: v.Vector3.all(_scale),
-        // Y ekseni senin açılışın için korundu, plak dönüşü Z'ye atandı. Başka hiçbir değişiklik yok.
-        eulerAngles: v.Vector3(-math.pi / 2, _rotYRad, _rotZRad),
+        // ✅ YATAY POZİSYON: X=-90° (masaya yatar), Y=0, Z=0 (plak gibi dönmek için)
+        eulerAngles: v.Vector3(-math.pi / 2, 0, _rotZRad),
       );
 
       arkitController!.add(imageNode!);
@@ -135,8 +130,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
     final newScale = v.Vector3.all(_scale);
 
-    // Y ekseni senin açılışın için korundu, plak dönüşü Z'ye atandı.
-    final newRotation = v.Vector3(-math.pi / 2, _rotYRad, _rotZRad);
+    // ✅ PLAK GİBİ DÖNME: Z ekseninde döndürme
+    final newRotation = v.Vector3(-math.pi / 2, 0, _rotZRad);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -161,7 +156,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
-    _baseRotYRad = _rotYRad;
     _baseRotZRad = _rotZRad;
   }
 
@@ -171,7 +165,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        // İŞTE BURASI: Döndürme sadece Z ekseninde (Plak gibi)
+        // ✅ PLAK GİBİ DÖNME: Z ekseninde döndürme
         _rotZRad = _baseRotZRad + d.rotation;
       } else {
         _posX += d.focalPointDelta.dx * 0.002;
@@ -190,8 +184,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       imageNode = null;
       nodeName = null;
       _scale = 0.3;
-      _rotYRad = -math.pi / 2;
-      _rotZRad = 0.0;
+      _rotZRad = 0.0; // Temizlendiğinde sıfırla
       _liftMeters = 0.0;
       _tiltMode = 0;
       _mirrored = false;
@@ -217,7 +210,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _rotPlus90() {
-    // Butonla çevirme de artık Z eksenine eklendi (Takla atmaması için)
     setState(() => _rotZRad += (math.pi / 2));
     _updateNodeTransform();
   }
