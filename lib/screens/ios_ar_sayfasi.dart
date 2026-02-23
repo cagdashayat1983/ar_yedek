@@ -18,8 +18,9 @@ class IosArSayfasi extends StatefulWidget {
 class _IosArSayfasiState extends State<IosArSayfasi> {
   ARKitController? arkitController;
 
-  ARKitNode? parentNode; // Görünmez tabure
-  ARKitNode? imageNode; // Üstündeki resim
+  // ✅ OYUN MOTORU MİMARİSİ: Taşıyıcı Tepsi ve Üstündeki Resim
+  ARKitNode? parentNode; // Görünmez Tepsi (Sadece bu döner ve hareket eder)
+  ARKitNode? imageNode; // Resim (Tepsiye kalıcı olarak YATIK mühürlenir)
 
   bool _placing = false;
   bool _tapLocked = false;
@@ -38,6 +39,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
 
+  // ✅ YATAY BAŞLANGIÇ: Resmin sana yan (manzara) gelmesi için Y ekseninde -90 derece ile başlar.
   double _rotYRad = -math.pi / 2;
   double _baseRotYRad = 0.0;
 
@@ -88,6 +90,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
+        // Işıksız ortamda bile resmin net görünmesini sağlar
         emission: ARKitMaterialProperty.image(widget.imagePath),
         transparency: _opacity,
         doubleSided: true,
@@ -103,19 +106,20 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       _posZ = hit.worldTransform.getColumn(3).z;
       final startY = hit.worldTransform.getColumn(3).y + _liftMeters;
 
-      // 1. Görünmez Tabure
+      // 1. GÖRÜNMEZ TEPSİYİ YARAT (Hareket ve dönüş buraya uygulanır)
       parentNode = ARKitNode(
         position: v.Vector3(_posX, startY, _posZ),
-        eulerAngles: v.Vector3(0, _rotYRad, 0),
+        eulerAngles: v.Vector3(0, _rotYRad, 0), // Sadece yere paralel döner
+        scale: v.Vector3.all(_scale), // Büyüme/küçülme tepsiye uygulanır
       );
       arkitController!.add(parentNode!);
 
-      // 2. Taburenin Üstündeki Yatan Resim
+      // 2. RESMİ YARAT VE TEPSİYE MÜHÜRLE
       imageNode = ARKitNode(
         geometry: plane,
         position: v.Vector3.zero(),
+        // 🔴 KESİN ÇÖZÜM: Resim sonsuza kadar masaya yatık kalır (-90 derece) ve bir daha ASLA güncellenmez.
         eulerAngles: v.Vector3(-math.pi / 2, 0, 0),
-        scale: v.Vector3.all(_scale),
       );
 
       arkitController!.add(imageNode!, parentNodeName: parentNode!.name);
@@ -129,15 +133,16 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     }
   }
 
-  void _updateNodeTransform() {
+  // ✅ SADECE TEPSİ GÜNCELLENİR: Resim asla bozulmaz!
+  void _updateParentTransform() {
     if (!_hasModel) return;
 
     parentNode!.position = v.Vector3(_posX, parentNode!.position.y, _posZ);
-    parentNode!.eulerAngles = v.Vector3(0, _rotYRad, 0);
-    arkitController?.update(parentNode!.name, node: parentNode!);
+    parentNode!.eulerAngles =
+        v.Vector3(0, _rotYRad, 0); // Sadece pikap gibi Y ekseninde döner
+    parentNode!.scale = v.Vector3.all(_scale);
 
-    imageNode!.scale = v.Vector3.all(_scale);
-    arkitController?.update(imageNode!.name, node: imageNode!);
+    arkitController?.update(parentNode!.name, node: parentNode!);
   }
 
   void _updateOpacity(double newOpacity) {
@@ -164,15 +169,17 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     setState(() {
       if (d.pointerCount > 1) {
+        // İki Parmak: Büyütme ve Döndürme
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
         _rotYRad = _baseRotYRad + d.rotation;
       } else {
+        // Tek Parmak: Masanın üzerinde sürükleme
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
       }
     });
 
-    _updateNodeTransform();
+    _updateParentTransform();
   }
 
   void _clearAll() {
@@ -200,17 +207,18 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _toggleMirror() {
     setState(() => _mirrored = !_mirrored);
-    if (imageNode != null) {
-      final currentScale = imageNode!.scale;
-      imageNode!.scale =
+    if (parentNode != null) {
+      final currentScale = parentNode!.scale;
+      // Aynalama da tepsiye uygulanır
+      parentNode!.scale =
           v.Vector3(-currentScale.x, currentScale.y, currentScale.z);
-      arkitController?.update(imageNode!.name, node: imageNode!);
+      arkitController?.update(parentNode!.name, node: parentNode!);
     }
   }
 
   void _rotPlus90() {
     setState(() => _rotYRad += (math.pi / 2));
-    _updateNodeTransform();
+    _updateParentTransform();
   }
 
   void _liftUp() {
@@ -221,6 +229,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     arkitController?.update(parentNode!.name, node: parentNode!);
   }
 
+  // ✅ EĞRETİ/HAVADA DURMA ÇÖZÜMÜ: Bu butona basarak resmi masaya gömebilirsin
   void _liftDown() {
     if (parentNode == null) return;
     setState(() => _liftMeters -= 0.01);
@@ -391,6 +400,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                             _btn(Icons.rotate_90_degrees_cw, "+90°", false,
                                 Colors.white, _rotPlus90),
                             const SizedBox(width: 8),
+                            // Y- BUTONU İLE MASAYA GÖMEBİLİRSİN
                             _btn(Icons.arrow_downward, "Y-", true,
                                 Colors.cyanAccent, _liftDown),
                             const SizedBox(width: 8),
@@ -466,7 +476,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 }
 
-// BU KISIM KOPYALANMADIĞI İÇİN HATA VERİYORDU:
 class GridPainter extends CustomPainter {
   final int gridCount;
   GridPainter({required this.gridCount});
