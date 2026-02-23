@@ -110,15 +110,14 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         _posZ,
       );
 
-      // ✅ NEGATİF SCALE YOK: her zaman pozitif scale
+      // ✅ NEGATİF SCALE YOK (bozulmayı bitirir)
       final startScale = v.Vector3(_scale, _scale, _scale);
 
-      // ✅ Tilt
       double tiltAngle = 0.0;
-      if (_tiltMode == 1) tiltAngle = math.pi / 12; // 15
-      if (_tiltMode == 2) tiltAngle = math.pi / 6; // 30
+      if (_tiltMode == 1) tiltAngle = math.pi / 12;
+      if (_tiltMode == 2) tiltAngle = math.pi / 6;
 
-      // ✅ Mirror = X ekseninde 180° çevir (plane düz kalır, bozulma olmaz)
+      // ✅ Mirror = X ekseninde 180° (plane düz kalır)
       final xAngle = (-math.pi / 2) + tiltAngle + (_mirrored ? math.pi : 0.0);
 
       imageNode = ARKitNode(
@@ -144,15 +143,14 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
 
-    // ✅ NEGATİF SCALE YOK: her zaman pozitif scale
+    // ✅ NEGATİF SCALE YOK
     final newScale = v.Vector3(_scale, _scale, _scale);
 
-    // ✅ Tilt
     double tiltAngle = 0.0;
     if (_tiltMode == 1) tiltAngle = math.pi / 12;
     if (_tiltMode == 2) tiltAngle = math.pi / 6;
 
-    // ✅ Mirror = X ekseninde 180° çevir
+    // ✅ Mirror = X ekseninde 180°
     final xAngle = (-math.pi / 2) + tiltAngle + (_mirrored ? math.pi : 0.0);
 
     final newRotation = v.Vector3(xAngle, _rotYRad, _rotZRad);
@@ -181,7 +179,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
     _baseRotYRad = _rotYRad;
-    _baseRotZRad = _rotZRad;
+    _baseRotZRad = _rotZRad; // +90 butonu için kalsın
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
@@ -191,8 +189,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
 
-        // ✅ senin kullandığın hali (dokunmadım)
-        _rotZRad = _baseRotZRad + (_mirrored ? d.rotation : -d.rotation);
+        // ✅ FIX: Pinch rotation artık Y eksenine (yaw) gider → bozulma biter
+        // ✅ Yön düzeltme: sola çevirince sola dönsün
+        _rotYRad = _baseRotYRad - d.rotation;
       } else {
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
@@ -541,7 +540,6 @@ class GridPainter extends CustomPainter {
       canvas.drawLine(Offset(0, h * i), Offset(size.width, h * i), paint);
     }
 
-    // ✅ Doğru: tam ekran çerçeve
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
   }
 
