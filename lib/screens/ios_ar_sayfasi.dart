@@ -110,25 +110,22 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         _posZ,
       );
 
-      // ✅ İlk eklenirken ayna durumu
-      final startScale =
-          v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale);
+      // ✅ NEGATİF SCALE YOK: her zaman pozitif scale
+      final startScale = v.Vector3(_scale, _scale, _scale);
 
       // ✅ Tilt
       double tiltAngle = 0.0;
-      if (_tiltMode == 1) tiltAngle = math.pi / 12; // 15 derece
-      if (_tiltMode == 2) tiltAngle = math.pi / 6; // 30 derece
+      if (_tiltMode == 1) tiltAngle = math.pi / 12; // 15
+      if (_tiltMode == 2) tiltAngle = math.pi / 6; // 30
+
+      // ✅ Mirror = X ekseninde 180° çevir (plane düz kalır, bozulma olmaz)
+      final xAngle = (-math.pi / 2) + tiltAngle + (_mirrored ? math.pi : 0.0);
 
       imageNode = ARKitNode(
         geometry: plane,
         position: position,
         scale: startScale,
-        // ✅ DEĞİŞİKLİK 1: mirror açıkken Z rotasyonunu ters uygula
-        eulerAngles: v.Vector3(
-          (-math.pi / 2) + tiltAngle,
-          _rotYRad,
-          _mirrored ? -_rotZRad : _rotZRad,
-        ),
+        eulerAngles: v.Vector3(xAngle, _rotYRad, _rotZRad),
       );
 
       arkitController!.add(imageNode!);
@@ -147,20 +144,18 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
 
-    // ✅ Mirror korunur
-    final newScale = v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale);
+    // ✅ NEGATİF SCALE YOK: her zaman pozitif scale
+    final newScale = v.Vector3(_scale, _scale, _scale);
 
     // ✅ Tilt
     double tiltAngle = 0.0;
     if (_tiltMode == 1) tiltAngle = math.pi / 12;
     if (_tiltMode == 2) tiltAngle = math.pi / 6;
 
-    // ✅ DEĞİŞİKLİK 2: mirror açıkken Z rotasyonunu ters uygula
-    final newRotation = v.Vector3(
-      (-math.pi / 2) + tiltAngle,
-      _rotYRad,
-      _mirrored ? -_rotZRad : _rotZRad,
-    );
+    // ✅ Mirror = X ekseninde 180° çevir
+    final xAngle = (-math.pi / 2) + tiltAngle + (_mirrored ? math.pi : 0.0);
+
+    final newRotation = v.Vector3(xAngle, _rotYRad, _rotZRad);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -196,8 +191,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
 
-        // ✅ TEK DÜZELTME BURADA:
-        // Mirror açıkken pinch rotation yönünü ters çeviriyoruz ki büyütürken “bozulma” olmasın.
+        // ✅ senin kullandığın hali (dokunmadım)
         _rotZRad = _baseRotZRad + (_mirrored ? d.rotation : -d.rotation);
       } else {
         _posX += d.focalPointDelta.dx * 0.002;
@@ -547,6 +541,7 @@ class GridPainter extends CustomPainter {
       canvas.drawLine(Offset(0, h * i), Offset(size.width, h * i), paint);
     }
 
+    // ✅ Doğru: tam ekran çerçeve
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
   }
 
