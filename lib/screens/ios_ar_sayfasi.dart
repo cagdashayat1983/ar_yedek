@@ -37,8 +37,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
 
-  // ✅ MATEMATİKSEL ÇÖZÜM: Döndürme ekseni Z'den Y'ye alındı.
-  // Başlangıç açısı -90 derece yapıldı ki masaya konduğunda sana dikey değil, tam YATAY baksın!
   double _rotYRad = -math.pi / 2;
   double _baseRotYRad = 0.0;
 
@@ -111,8 +109,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         geometry: plane,
         position: position,
         scale: v.Vector3.all(_scale),
-        // ✅ EKSEN DÜZELTİLDİ: X=-90 (Masaya jilet gibi yatar), Y=_rotYRad (Masanın üstünde döner), Z=0 (Asla ayağa kalkmaz)
-        eulerAngles: v.Vector3(-math.pi / 2, _rotYRad, 0),
+        // ✅ DEĞİŞEN TEK YER BURASI: _rotYRad değeri Y'den Z'ye (3. sıraya) alındı. Plak dönüşü sağlandı.
+        eulerAngles: v.Vector3(-math.pi / 2, 0, _rotYRad),
       );
 
       arkitController!.add(imageNode!);
@@ -132,8 +130,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
     final newScale = v.Vector3.all(_scale);
 
-    // ✅ GÜNCELLEMEDE DE AYNISI: Asla ayağa kalkmasına izin vermiyoruz.
-    final newRotation = v.Vector3(-math.pi / 2, _rotYRad, 0);
+    // ✅ GÜNCELLEMEDE DE AYNISI: Dönüş değeri Z ekseninde güncelleniyor.
+    final newRotation = v.Vector3(-math.pi / 2, 0, _rotYRad);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -167,7 +165,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        // ✅ DÖNDÜRME DE Y EKSENİNDE
         _rotYRad = _baseRotYRad + d.rotation;
       } else {
         _posX += d.focalPointDelta.dx * 0.002;
