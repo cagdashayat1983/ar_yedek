@@ -18,10 +18,10 @@ class IosArSayfasi extends StatefulWidget {
 class _IosArSayfasiState extends State<IosArSayfasi> {
   ARKitController? arkitController;
 
-  // ✅ Taşıyıcı tepsi (sadece bu hareket eder/döner)
+  // ✅ Taşıyıcı tepsi (hareket + plak dönüş + scale sadece burada)
   ARKitNode? parentNode;
 
-  // ✅ Resim (tepsiye yatık sabitlenir)
+  // ✅ Resim (tepsiye sabitlenir)
   ARKitNode? imageNode;
 
   bool _placing = false;
@@ -41,12 +41,12 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   double _posX = 0.0;
   double _posZ = -0.5;
 
-  // ✅ Plak gibi dönüş: sadece Yaw (Y ekseni)
+  // ✅ Plak gibi dönüş: sadece yaw (Y ekseni)
   double _yawRad = 0.0;
   double _baseYawRad = 0.0;
 
-  // ✅ Resmin kendi içinde manzara yönü (plane içinde Z)
-  // Yanlışsa: 0 / +pi/2 / -pi/2 üçünden birine al.
+  // ✅ Resmi kendi içinde "manzara" yapmak için:
+  // Yanlışsa: 0 / +pi/2 / -pi/2 dene.
   double _inPlaneRad = math.pi / 2;
 
   double _opacity = 0.6;
@@ -111,7 +111,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       _posZ = hit.worldTransform.getColumn(3).z;
       final startY = hit.worldTransform.getColumn(3).y + _liftMeters;
 
-      // 1) ✅ TEPSİ: sadece bu döner/hareket eder
+      // 1) ✅ TEPSİ: sadece bu hareket eder/döner
       parentNode = ARKitNode(
         position: v.Vector3(_posX, startY, _posZ),
         scale: v.Vector3.all(_scale),
@@ -120,11 +120,13 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       );
       arkitController!.add(parentNode!);
 
-      // 2) ✅ RESİM: X=-90° masaya yatır, Z ile manzara yönünü ayarla
+      // 2) ✅ RESİM: (ÖNEMLİ) burada -pi/2 YOK!
+      // ARKitPlane çoğu sürümde zaten yatay gelir.
+      // Manzara yönünü Z ile çeviriyoruz.
       imageNode = ARKitNode(
         geometry: plane,
         position: v.Vector3.zero(),
-        eulerAngles: v.Vector3(-math.pi / 2, 0, _inPlaneRad),
+        eulerAngles: v.Vector3(0, 0, _inPlaneRad),
       );
 
       arkitController!.add(imageNode!, parentNodeName: parentNode!.name);
@@ -138,14 +140,11 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     }
   }
 
-  // ✅ Sadece tepsi güncellenir
   void _updateParentTransform() {
     if (!_hasModel) return;
 
     parentNode!.position = v.Vector3(_posX, parentNode!.position.y, _posZ);
     parentNode!.scale = v.Vector3.all(_scale);
-
-    // ✅ sadece Y (plak gibi)
     parentNode!.eulerAngles = v.Vector3(0, _yawRad, 0);
 
     arkitController?.update(parentNode!.name, node: parentNode!);
@@ -175,7 +174,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     setState(() {
       if (d.pointerCount > 1) {
-        // ✅ 2 parmak: scale + plak dönüş (yaw)
+        // ✅ 2 parmak: büyüt + plak gibi döndür
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
         _yawRad = _baseYawRad + d.rotation;
       } else {
