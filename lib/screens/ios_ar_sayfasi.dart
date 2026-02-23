@@ -37,10 +37,10 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
 
-  // ✅ MATEMATİKSEL ÇÖZÜM: Döndürme ekseni Z'den Y'ye alındı.
-  // Başlangıç açısı -90 derece yapıldı ki masaya konduğunda sana dikey değil, tam YATAY baksın!
-  double _rotYRad = -math.pi / 2;
-  double _baseRotYRad = 0.0;
+  // ✅ TAKLA ATMA SORUNU ÇÖZÜLDÜ: Eksen tekrar Z'ye (Pikap plağı gibi dönme ekseni) alındı!
+  // Başlangıçta sana dikey bakmasın diye tam yatay (-90 derece) başlatıyoruz.
+  double _rotZRad = -math.pi / 2;
+  double _baseRotZRad = 0.0;
 
   double _opacity = 0.6;
 
@@ -89,8 +89,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
-        emission: ARKitMaterialProperty.image(
-            widget.imagePath), // Parlaklık korunuyor
+        emission: ARKitMaterialProperty.image(widget.imagePath),
         transparency: _opacity,
         doubleSided: true,
       );
@@ -111,8 +110,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         geometry: plane,
         position: position,
         scale: v.Vector3.all(_scale),
-        // ✅ EKSEN DÜZELTİLDİ: X=-90 (Masaya jilet gibi yatar), Y=_rotYRad (Masanın üstünde döner), Z=0 (Asla ayağa kalkmaz)
-        eulerAngles: v.Vector3(-math.pi / 2, _rotYRad, 0),
+        // ✅ EKSEN KUSURSUZLAŞTIRILDI: X=-90 (Masaya yatır), Y=0 (Takla attırma), Z=_rotZRad (Masa üstünde fırıldak gibi çevir)
+        eulerAngles: v.Vector3(-math.pi / 2, 0, _rotZRad),
       );
 
       arkitController!.add(imageNode!);
@@ -132,8 +131,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
     final newScale = v.Vector3.all(_scale);
 
-    // ✅ GÜNCELLEMEDE DE AYNISI: Asla ayağa kalkmasına izin vermiyoruz.
-    final newRotation = v.Vector3(-math.pi / 2, _rotYRad, 0);
+    // ✅ Döndürme güncellemesi
+    final newRotation = v.Vector3(-math.pi / 2, 0, _rotZRad);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -158,7 +157,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
-    _baseRotYRad = _rotYRad;
+    _baseRotZRad = _rotZRad;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
@@ -167,8 +166,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        // ✅ DÖNDÜRME DE Y EKSENİNDE
-        _rotYRad = _baseRotYRad + d.rotation;
+        // ✅ PARMAKLA ÇEVİRME ARTIK TAKLA ATTIRMAYACAK, PLAĞI ÇEVİRECEK
+        _rotZRad = _baseRotZRad + d.rotation;
       } else {
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
@@ -186,7 +185,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       imageNode = null;
       nodeName = null;
       _scale = 0.3;
-      _rotYRad = -math.pi / 2; // Temizlendiğinde yine yatay başlasın
+      _rotZRad = -math.pi / 2; // Temizlendiğinde yine yatay başlasın
       _liftMeters = 0.0;
       _tiltMode = 0;
       _mirrored = false;
@@ -212,7 +211,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _rotPlus90() {
-    setState(() => _rotYRad += (math.pi / 2));
+    setState(() => _rotZRad += (math.pi / 2));
     _updateNodeTransform();
   }
 
@@ -392,8 +391,12 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                             _btn(Icons.rotate_90_degrees_cw, "+90°", false,
                                 Colors.white, _rotPlus90),
                             const SizedBox(width: 8),
-                            _btn(Icons.arrow_downward, "Y-", true,
-                                Colors.cyanAccent, _liftDown),
+                            _btn(
+                                Icons.arrow_downward,
+                                "Y-",
+                                true,
+                                Colors.cyanAccent,
+                                _liftDown), // Havada durmayı çözen buton
                             const SizedBox(width: 8),
                             _btn(Icons.arrow_upward, "Y+", true,
                                 Colors.cyanAccent, _liftUp),
