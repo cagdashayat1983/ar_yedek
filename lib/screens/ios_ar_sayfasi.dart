@@ -27,7 +27,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   bool _isRecording = false;
 
   int _gridMode = 0;
-  int _tiltMode = 0;
 
   double _scale = 0.3;
   double _liftMeters = 0.0;
@@ -37,10 +36,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
 
-  double _rotYRad = -math.pi / 2;
-  double _baseRotYRad = 0.0;
-
-  double _rotZRad = 0.0;
+  double _rotZRad = -math.pi / 2;
   double _baseRotZRad = 0.0;
 
   double _opacity = 0.6;
@@ -105,27 +101,16 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       _posZ = hit.worldTransform.getColumn(3).z;
 
       final position = v.Vector3(
-        _posX,
-        hit.worldTransform.getColumn(3).y + _liftMeters,
-        _posZ,
-      );
-
-      // ✅ NEGATİF SCALE YOK: her zaman pozitif scale
-      final startScale = v.Vector3(_scale, _scale, _scale);
-
-      // ✅ Tilt
-      double tiltAngle = 0.0;
-      if (_tiltMode == 1) tiltAngle = math.pi / 12; // 15
-      if (_tiltMode == 2) tiltAngle = math.pi / 6; // 30
-
-      // ✅ Mirror = X ekseninde 180° çevir (plane düz kalır, bozulma olmaz)
-      final xAngle = (-math.pi / 2) + tiltAngle + (_mirrored ? math.pi : 0.0);
+          _posX, hit.worldTransform.getColumn(3).y + _liftMeters, _posZ);
 
       imageNode = ARKitNode(
         geometry: plane,
         position: position,
-        scale: startScale,
-        eulerAngles: v.Vector3(xAngle, _rotYRad, _rotZRad),
+        // ✅ AYNA VE BÜYÜTME ÇÖZÜMÜ: Scale her zaman pozitif olmalı
+        scale: v.Vector3(_scale, _scale, _scale),
+        // ✅ Aynalama işlemini nesnenin arka yüzünü çevirerek yapıyoruz (math.pi ile)
+        eulerAngles:
+            v.Vector3(-math.pi / 2, _mirrored ? math.pi : 0.0, _rotZRad),
       );
 
       arkitController!.add(imageNode!);
@@ -144,18 +129,12 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
 
-    // ✅ NEGATİF SCALE YOK: her zaman pozitif scale
+    // ✅ Scale daima pozitif, bozulmaları engeller
     final newScale = v.Vector3(_scale, _scale, _scale);
 
-    // ✅ Tilt
-    double tiltAngle = 0.0;
-    if (_tiltMode == 1) tiltAngle = math.pi / 12;
-    if (_tiltMode == 2) tiltAngle = math.pi / 6;
-
-    // ✅ Mirror = X ekseninde 180° çevir
-    final xAngle = (-math.pi / 2) + tiltAngle + (_mirrored ? math.pi : 0.0);
-
-    final newRotation = v.Vector3(xAngle, _rotYRad, _rotZRad);
+    // ✅ Rotasyon daima y eksenindeki aynalama durumuna bakar
+    final newRotation =
+        v.Vector3(-math.pi / 2, _mirrored ? math.pi : 0.0, _rotZRad);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -180,24 +159,23 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
-    _baseRotYRad = _rotYRad;
     _baseRotZRad = _rotZRad;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
     if (!_hasModel || _tapLocked) return;
 
-    setState(() {
-      if (d.pointerCount > 1) {
-        _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
+    // ✅ PERFORMANS ÇÖZÜMÜ: Pinch yaparken saniyede 60 kez UI çizilmemesi için setState kaldırıldı!
+    // Değerleri doğrudan native motora giden transform objesine aktarıyoruz.
+    if (d.pointerCount > 1) {
+      _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
 
-        // ✅ senin kullandığın hali (dokunmadım)
-        _rotZRad = _baseRotZRad + (_mirrored ? d.rotation : -d.rotation);
-      } else {
-        _posX += d.focalPointDelta.dx * 0.002;
-        _posZ += d.focalPointDelta.dy * 0.002;
-      }
-    });
+      double rotationDelta = _mirrored ? -d.rotation : d.rotation;
+      _rotZRad = _baseRotZRad + rotationDelta;
+    } else {
+      _posX += d.focalPointDelta.dx * 0.002;
+      _posZ += d.focalPointDelta.dy * 0.002;
+    }
 
     _updateNodeTransform();
   }
@@ -210,21 +188,24 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       imageNode = null;
       nodeName = null;
       _scale = 0.3;
-      _rotYRad = -math.pi / 2;
-      _rotZRad = 0.0;
+      _rotZRad = -math.pi / 2;
       _liftMeters = 0.0;
-      _tiltMode = 0;
       _mirrored = false;
     });
     _showToast("Temizlendi. Tekrar dokunabilirsin.");
   }
 
-  void _toggleGrid() => setState(() => _gridMode =
-      (_gridMode == 0) ? 3 : (_gridMode == 3 ? 4 : (_gridMode == 4 ? 5 : 0)));
-
-  void _toggleTilt() {
-    setState(() => _tiltMode = (_tiltMode + 1) % 3);
-    _updateNodeTransform();
+  // ✅ KOD GÜZELLEŞTİRMESİ: Okunabilir bir geçiş mantığı
+  void _toggleGrid() {
+    setState(() {
+      if (_gridMode == 0) {
+        _gridMode = 3;
+      } else if (_gridMode >= 5) {
+        _gridMode = 0;
+      } else {
+        _gridMode++;
+      }
+    });
   }
 
   void _toggleMirror() {
@@ -233,7 +214,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _rotPlus90() {
-    setState(() => _rotZRad -= (math.pi / 2));
+    double step = _mirrored ? -(math.pi / 2) : (math.pi / 2);
+    setState(() => _rotZRad += step);
     _updateNodeTransform();
   }
 
@@ -312,27 +294,21 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                           onPressed: () {},
                           icon:
                               const Icon(Icons.apple, color: Colors.cyanAccent),
-                          label: const Text(
-                            "PRO AR MODU (iOS)",
-                            style: TextStyle(
-                              color: Colors.cyanAccent,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          label: const Text("PRO AR MODU (iOS)",
+                              style: TextStyle(
+                                  color: Colors.cyanAccent,
+                                  fontWeight: FontWeight.bold)),
                         ),
                         const Spacer(),
                         if (_toastText.isNotEmpty)
-                          Text(
-                            _toastText,
-                            style: const TextStyle(
-                                color: Colors.white70, fontSize: 12),
-                          ),
+                          Text(_toastText,
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 12)),
                         const Spacer(),
                         IconButton(
-                          onPressed: _clearAll,
-                          icon: const Icon(Icons.delete_outline,
-                              color: Colors.white),
-                        ),
+                            onPressed: _clearAll,
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.white)),
                       ],
                     ),
                   ),
@@ -351,9 +327,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(20)),
                   child: Row(
                     children: [
                       const Icon(Icons.opacity, color: Colors.white, size: 20),
@@ -392,46 +367,26 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                         child: Row(
                           children: [
                             _btn(
-                              _isRecording
-                                  ? Icons.stop_circle_outlined
-                                  : Icons.videocam,
-                              _isRecording ? "Durdur" : "Kaydet",
-                              _isRecording,
-                              Colors.redAccent,
-                              _toggleRecording,
-                            ),
+                                _isRecording
+                                    ? Icons.stop_circle_outlined
+                                    : Icons.videocam,
+                                _isRecording ? "Durdur" : "Kaydet",
+                                _isRecording,
+                                Colors.redAccent,
+                                _toggleRecording),
                             const SizedBox(width: 8),
                             _btn(
-                              _tapLocked ? Icons.lock : Icons.lock_open,
-                              "Kilit",
-                              _tapLocked,
-                              Colors.redAccent,
-                              () => setState(() => _tapLocked = !_tapLocked),
-                            ),
+                                _tapLocked ? Icons.lock : Icons.lock_open,
+                                "Kilit",
+                                _tapLocked,
+                                Colors.redAccent,
+                                () => setState(() => _tapLocked = !_tapLocked)),
                             const SizedBox(width: 8),
-                            _btn(
-                              Icons.view_in_ar,
-                              _tiltMode == 0 ? "Eğim" : "${_tiltMode}x",
-                              _tiltMode > 0,
-                              Colors.orangeAccent,
-                              _toggleTilt,
-                            ),
+                            _btn(Icons.flip, "Ayna", _mirrored,
+                                Colors.blueAccent, _toggleMirror),
                             const SizedBox(width: 8),
-                            _btn(
-                              Icons.flip,
-                              "Ayna",
-                              _mirrored,
-                              Colors.blueAccent,
-                              _toggleMirror,
-                            ),
-                            const SizedBox(width: 8),
-                            _btn(
-                              Icons.rotate_90_degrees_cw,
-                              "+90°",
-                              false,
-                              Colors.white,
-                              _rotPlus90,
-                            ),
+                            _btn(Icons.rotate_90_degrees_cw, "+90°", false,
+                                Colors.white, _rotPlus90),
                             const SizedBox(width: 8),
                             _btn(Icons.arrow_downward, "Y-", true,
                                 Colors.cyanAccent, _liftDown),
@@ -440,20 +395,14 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                                 Colors.cyanAccent, _liftUp),
                             const SizedBox(width: 8),
                             _btn(
-                              Icons.grid_on,
-                              _gridMode == 0 ? "Izgara" : "${_gridMode}x",
-                              _gridMode > 0,
-                              Colors.greenAccent,
-                              _toggleGrid,
-                            ),
+                                Icons.grid_on,
+                                _gridMode == 0 ? "Izgara" : "${_gridMode}x",
+                                _gridMode > 0,
+                                Colors.greenAccent,
+                                _toggleGrid),
                             const SizedBox(width: 8),
-                            _btn(
-                              _flashOn ? Icons.flash_on : Icons.flash_off,
-                              "Flaş",
-                              _flashOn,
-                              Colors.amber,
-                              _toggleFlash,
-                            ),
+                            _btn(_flashOn ? Icons.flash_on : Icons.flash_off,
+                                "Flaş", _flashOn, Colors.amber, _toggleFlash),
                           ],
                         ),
                       ),
@@ -480,42 +429,34 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
             decoration: BoxDecoration(
               gradient: isActive
                   ? LinearGradient(
-                      colors: [activeColor, activeColor.withValues(alpha: 0.6)],
-                    )
-                  : LinearGradient(
-                      colors: [
-                        Colors.white.withValues(alpha: 0.12),
-                        Colors.white.withValues(alpha: 0.06),
-                      ],
-                    ),
+                      colors: [activeColor, activeColor.withValues(alpha: 0.6)])
+                  : LinearGradient(colors: [
+                      Colors.white.withValues(alpha: 0.12),
+                      Colors.white.withValues(alpha: 0.06)
+                    ]),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: isActive
-                    ? activeColor.withValues(alpha: 0.5)
-                    : Colors.white.withValues(alpha: 0.10),
-                width: 1.5,
-              ),
+                  color: isActive
+                      ? activeColor.withValues(alpha: 0.5)
+                      : Colors.white.withValues(alpha: 0.10),
+                  width: 1.5),
               boxShadow: isActive
                   ? [
                       BoxShadow(
-                        color: activeColor.withValues(alpha: 0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      )
+                          color: activeColor.withValues(alpha: 0.35),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2))
                     ]
                   : [],
             ),
             child: Icon(icon, color: Colors.white, size: 22),
           ),
           const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isActive ? activeColor : Colors.white54,
-              fontSize: 9,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
+          Text(label,
+              style: TextStyle(
+                  color: isActive ? activeColor : Colors.white54,
+                  fontSize: 9,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
         ],
       ),
     );
@@ -532,7 +473,6 @@ class GridPainter extends CustomPainter {
       ..color = Colors.cyanAccent.withValues(alpha: 0.3)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
-
     final w = size.width / gridCount;
     final h = size.height / gridCount;
 
@@ -540,8 +480,6 @@ class GridPainter extends CustomPainter {
       canvas.drawLine(Offset(w * i, 0), Offset(w * i, size.height), paint);
       canvas.drawLine(Offset(0, h * i), Offset(size.width, h * i), paint);
     }
-
-    // ✅ Doğru: tam ekran çerçeve
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
   }
 
