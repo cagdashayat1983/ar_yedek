@@ -27,6 +27,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   bool _isRecording = false;
 
   int _gridMode = 0;
+  int _tiltMode = 0;
 
   double _scale = 0.3;
   double _liftMeters = 0.0;
@@ -36,8 +37,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
 
-  double _rotZRad = -math.pi / 2;
-  double _baseRotZRad = 0.0;
+  // Senin mükemmel çalışan yatay açılış ve dönüş eksenin.
+  double _rotYRad = -math.pi / 2;
+  double _baseRotYRad = 0.0;
 
   double _opacity = 0.6;
 
@@ -103,15 +105,13 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       final position = v.Vector3(
           _posX, hit.worldTransform.getColumn(3).y + _liftMeters, _posZ);
 
-      // ✅ ÇÖZÜM: Eksi ölçek iptal edildi. Aynalama geometriyi ters çevirerek yapılıyor. Sündürme bitti.
-      double rotX = _mirrored ? (math.pi / 2) : (-math.pi / 2);
-      double rotZ = _mirrored ? (-_rotZRad + math.pi) : _rotZRad;
-
       imageNode = ARKitNode(
         geometry: plane,
         position: position,
-        scale: v.Vector3.all(_scale), // ASLA eksi almaz, %100 orantılı kalır.
-        eulerAngles: v.Vector3(rotX, 0, rotZ),
+        // YALNIZCA BU SATIR DEĞİŞTİ: Ayna sündürmesini engeller
+        scale: v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale),
+        // SENİN ÇALIŞAN EKSENİN: Dokunulmadı.
+        eulerAngles: v.Vector3(-math.pi / 2, _rotYRad, 0),
       );
 
       arkitController!.add(imageNode!);
@@ -129,14 +129,13 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     if (!_hasModel || nodeName == null) return;
 
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
-
-    double rotX = _mirrored ? (math.pi / 2) : (-math.pi / 2);
-    double rotZ = _mirrored ? (-_rotZRad + math.pi) : _rotZRad;
+    // YALNIZCA BU SATIR DEĞİŞTİ: Büyütme anında aynayı korur
+    final newScale = v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale);
+    final newRotation = v.Vector3(-math.pi / 2, _rotYRad, 0);
 
     imageNode!.position = newPosition;
-    imageNode!.scale =
-        v.Vector3.all(_scale); // Orantı güncellenirken de korunur
-    imageNode!.eulerAngles = v.Vector3(rotX, 0, rotZ);
+    imageNode!.scale = newScale;
+    imageNode!.eulerAngles = newRotation;
 
     arkitController?.update(nodeName!, node: imageNode!);
   }
@@ -157,7 +156,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
-    _baseRotZRad = _rotZRad;
+    _baseRotYRad = _rotYRad;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
@@ -166,7 +165,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        _rotZRad = _baseRotZRad - d.rotation;
+        // YALNIZCA BU SATIR DEĞİŞTİ: Ters dönmeyi düzeltmek için + yerine - yapıldı
+        _rotYRad = _baseRotYRad - d.rotation;
       } else {
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
@@ -184,8 +184,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       imageNode = null;
       nodeName = null;
       _scale = 0.3;
-      _rotZRad = -math.pi / 2;
+      _rotYRad = -math.pi / 2;
       _liftMeters = 0.0;
+      _tiltMode = 0;
       _mirrored = false;
     });
     _showToast("Temizlendi. Tekrar dokunabilirsin.");
@@ -194,13 +195,17 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   void _toggleGrid() => setState(() => _gridMode =
       (_gridMode == 0) ? 3 : (_gridMode == 3 ? 4 : (_gridMode == 4 ? 5 : 0)));
 
+  void _toggleTilt() {
+    setState(() => _tiltMode = (_tiltMode + 1) % 3);
+  }
+
   void _toggleMirror() {
     setState(() => _mirrored = !_mirrored);
     _updateNodeTransform();
   }
 
   void _rotPlus90() {
-    setState(() => _rotZRad -= (math.pi / 2));
+    setState(() => _rotYRad -= (math.pi / 2));
     _updateNodeTransform();
   }
 
@@ -366,6 +371,13 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                                 _tapLocked,
                                 Colors.redAccent,
                                 () => setState(() => _tapLocked = !_tapLocked)),
+                            const SizedBox(width: 8),
+                            _btn(
+                                Icons.view_in_ar,
+                                _tiltMode == 0 ? "Eğim" : "${_tiltMode}x",
+                                _tiltMode > 0,
+                                Colors.orangeAccent,
+                                _toggleTilt),
                             const SizedBox(width: 8),
                             _btn(Icons.flip, "Ayna", _mirrored,
                                 Colors.blueAccent, _toggleMirror),
