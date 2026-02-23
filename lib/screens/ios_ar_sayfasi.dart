@@ -17,8 +17,10 @@ class IosArSayfasi extends StatefulWidget {
 
 class _IosArSayfasiState extends State<IosArSayfasi> {
   ARKitController? arkitController;
-  ARKitNode? imageNode;
-  String? nodeName;
+
+  // ✅ KESİN ÇÖZÜM: İki ayrı obje kullanıyoruz. Biri görünmez dönen tabure, diğeri yatan resim.
+  ARKitNode? parentNode; // Görünmez tabure
+  ARKitNode? imageNode; // Üstündeki resim
 
   bool _placing = false;
   bool _tapLocked = false;
@@ -37,17 +39,16 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
 
-  // ✅ TAKLA ATMA SORUNU ÇÖZÜLDÜ: Eksen tekrar Z'ye (Pikap plağı gibi dönme ekseni) alındı!
-  // Başlangıçta sana dikey bakmasın diye tam yatay (-90 derece) başlatıyoruz.
-  double _rotZRad = -math.pi / 2;
-  double _baseRotZRad = 0.0;
+  // Başlangıçta yatay (manzara) gelmesi için tabureyi -90 derece çevrilmiş başlatıyoruz.
+  double _rotYRad = -math.pi / 2;
+  double _baseRotYRad = 0.0;
 
   double _opacity = 0.6;
 
   Timer? _toastTimer;
   String _toastText = "";
 
-  bool get _hasModel => imageNode != null;
+  bool get _hasModel => parentNode != null;
 
   void _showToast(String msg) {
     if (!mounted) return;
@@ -89,7 +90,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
-        emission: ARKitMaterialProperty.image(widget.imagePath),
+        lightingModel: ARKitLightingModel
+            .constant, // Eğreti durmayı engeller, netliği korur
         transparency: _opacity,
         doubleSided: true,
       );
@@ -102,20 +104,27 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
       _posX = hit.worldTransform.getColumn(3).x;
       _posZ = hit.worldTransform.getColumn(3).z;
+      final startY = hit.worldTransform.getColumn(3).y + _liftMeters;
 
-      final position = v.Vector3(
-          _posX, hit.worldTransform.getColumn(3).y + _liftMeters, _posZ);
+      // 1. Görünmez Tabureyi (Parent) Zemine Koy
+      parentNode = ARKitNode(
+        position: v.Vector3(_posX, startY, _posZ),
+        eulerAngles:
+            v.Vector3(0, _rotYRad, 0), // Sadece Y ekseninde (Pikap gibi) döner
+      );
+      arkitController!.add(parentNode!);
 
+      // 2. Resmi (Child) Taburenin Üstüne Yatır
       imageNode = ARKitNode(
         geometry: plane,
-        position: position,
+        position: v.Vector3.zero(), // Taburenin tam merkezi
+        eulerAngles: v.Vector3(
+            -math.pi / 2, 0, 0), // Kalıcı olarak masaya yapıştırır/yatırır
         scale: v.Vector3.all(_scale),
-        // ✅ EKSEN KUSURSUZLAŞTIRILDI: X=-90 (Masaya yatır), Y=0 (Takla attırma), Z=_rotZRad (Masa üstünde fırıldak gibi çevir)
-        eulerAngles: v.Vector3(-math.pi / 2, 0, _rotZRad),
       );
+      // Resmi tabureye bağlıyoruz
+      arkitController!.add(imageNode!, parentNodeName: parentNode!.name);
 
-      arkitController!.add(imageNode!);
-      nodeName = imageNode!.name;
       _showToast("✅ Resim Masaya Serildi!");
       setState(() {});
     } catch (e) {
@@ -126,28 +135,25 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _updateNodeTransform() {
-    if (!_hasModel || nodeName == null) return;
+    if (!_hasModel) return;
 
-    final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
-    final newScale = v.Vector3.all(_scale);
+    // Sürükleme ve döndürme işlemlerini sadece TABUREYE uyguluyoruz
+    parentNode!.position = v.Vector3(_posX, parentNode!.position.y, _posZ);
+    parentNode!.eulerAngles = v.Vector3(0, _rotYRad, 0);
+    arkitController?.update(parentNode!.name, node: parentNode!);
 
-    // ✅ Döndürme güncellemesi
-    final newRotation = v.Vector3(-math.pi / 2, 0, _rotZRad);
-
-    imageNode!.position = newPosition;
-    imageNode!.scale = newScale;
-    imageNode!.eulerAngles = newRotation;
-
-    arkitController?.update(nodeName!, node: imageNode!);
+    // Ölçeklendirmeyi RESME uyguluyoruz
+    imageNode!.scale = v.Vector3.all(_scale);
+    arkitController?.update(imageNode!.name, node: imageNode!);
   }
 
   void _updateOpacity(double newOpacity) {
     setState(() => _opacity = newOpacity);
-    if (!_hasModel || nodeName == null) return;
+    if (imageNode == null) return;
 
     final newMaterial = ARKitMaterial(
       diffuse: ARKitMaterialProperty.image(widget.imagePath),
-      emission: ARKitMaterialProperty.image(widget.imagePath),
+      lightingModel: ARKitLightingModel.constant,
       transparency: _opacity,
       doubleSided: true,
     );
@@ -157,7 +163,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
-    _baseRotZRad = _rotZRad;
+    _baseRotYRad = _rotYRad;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
@@ -166,9 +172,10 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        // ✅ PARMAKLA ÇEVİRME ARTIK TAKLA ATTIRMAYACAK, PLAĞI ÇEVİRECEK
-        _rotZRad = _baseRotZRad + d.rotation;
+        // İki parmak hareketi tabureyi döndürür (Asla takla atmaz)
+        _rotYRad = _baseRotYRad + d.rotation;
       } else {
+        // Tek parmak hareketi yatay zeminde kaydırır
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
       }
@@ -178,14 +185,15 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _clearAll() {
-    if (nodeName != null) {
-      arkitController?.remove(nodeName!);
+    if (parentNode != null) {
+      arkitController?.remove(
+          parentNode!.name); // Parent silinince resim de otomatik silinir
     }
     setState(() {
+      parentNode = null;
       imageNode = null;
-      nodeName = null;
       _scale = 0.3;
-      _rotZRad = -math.pi / 2; // Temizlendiğinde yine yatay başlasın
+      _rotYRad = -math.pi / 2; // Temizleyince yine yatay başlar
       _liftMeters = 0.0;
       _tiltMode = 0;
       _mirrored = false;
@@ -202,31 +210,33 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _toggleMirror() {
     setState(() => _mirrored = !_mirrored);
-    if (_hasModel && nodeName != null) {
+    if (imageNode != null) {
       final currentScale = imageNode!.scale;
       imageNode!.scale =
           v.Vector3(-currentScale.x, currentScale.y, currentScale.z);
-      arkitController?.update(nodeName!, node: imageNode!);
+      arkitController?.update(imageNode!.name, node: imageNode!);
     }
   }
 
   void _rotPlus90() {
-    setState(() => _rotZRad += (math.pi / 2));
+    setState(() => _rotYRad += (math.pi / 2));
     _updateNodeTransform();
   }
 
   void _liftUp() {
-    if (!_hasModel || nodeName == null) return;
+    if (parentNode == null) return;
     setState(() => _liftMeters += 0.01);
-    imageNode!.position = v.Vector3(_posX, imageNode!.position.y + 0.01, _posZ);
-    arkitController?.update(nodeName!, node: imageNode!);
+    parentNode!.position =
+        v.Vector3(_posX, parentNode!.position.y + 0.01, _posZ);
+    arkitController?.update(parentNode!.name, node: parentNode!);
   }
 
   void _liftDown() {
-    if (!_hasModel || nodeName == null) return;
+    if (parentNode == null) return;
     setState(() => _liftMeters -= 0.01);
-    imageNode!.position = v.Vector3(_posX, imageNode!.position.y - 0.01, _posZ);
-    arkitController?.update(nodeName!, node: imageNode!);
+    parentNode!.position =
+        v.Vector3(_posX, parentNode!.position.y - 0.01, _posZ);
+    arkitController?.update(parentNode!.name, node: parentNode!);
   }
 
   void _toggleFlash() => setState(() => _flashOn = !_flashOn);
@@ -391,12 +401,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                             _btn(Icons.rotate_90_degrees_cw, "+90°", false,
                                 Colors.white, _rotPlus90),
                             const SizedBox(width: 8),
-                            _btn(
-                                Icons.arrow_downward,
-                                "Y-",
-                                true,
-                                Colors.cyanAccent,
-                                _liftDown), // Havada durmayı çözen buton
+                            _btn(Icons.arrow_downward, "Y-", true,
+                                Colors.cyanAccent, _liftDown),
                             const SizedBox(width: 8),
                             _btn(Icons.arrow_upward, "Y+", true,
                                 Colors.cyanAccent, _liftUp),
