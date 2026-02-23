@@ -37,7 +37,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
 
-  // ✅ PLAK GİBİ DÖNME: Z ekseninde döndürme yapılacak
+  double _rotYRad = -math.pi / 2;
+  double _baseRotYRad = 0.0;
+
   double _rotZRad = 0.0;
   double _baseRotZRad = 0.0;
 
@@ -105,12 +107,20 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       final position = v.Vector3(
           _posX, hit.worldTransform.getColumn(3).y + _liftMeters, _posZ);
 
+      // ✅ 1. HATA ÇÖZÜMÜ: İlk eklenirken ayna durumu kontrol ediliyor
+      final startScale =
+          v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale);
+
+      // ✅ 2. HATA ÇÖZÜMÜ: Eğimi (Tilt) 3D resme yansıtma açısı eklendi
+      double tiltAngle = 0.0;
+      if (_tiltMode == 1) tiltAngle = math.pi / 12; // 15 derece eğim
+      if (_tiltMode == 2) tiltAngle = math.pi / 6; // 30 derece eğim
+
       imageNode = ARKitNode(
         geometry: plane,
         position: position,
-        scale: v.Vector3.all(_scale),
-        // ✅ YATAY POZİSYON: X=-90° (masaya yatar), Y=0, Z=0 (plak gibi dönmek için)
-        eulerAngles: v.Vector3(-math.pi / 2, 0, _rotZRad),
+        scale: startScale,
+        eulerAngles: v.Vector3((-math.pi / 2) + tiltAngle, _rotYRad, _rotZRad),
       );
 
       arkitController!.add(imageNode!);
@@ -128,10 +138,17 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     if (!_hasModel || nodeName == null) return;
 
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
-    final newScale = v.Vector3.all(_scale);
 
-    // ✅ PLAK GİBİ DÖNME: Z ekseninde döndürme
-    final newRotation = v.Vector3(-math.pi / 2, 0, _rotZRad);
+    // ✅ 1. HATA ÇÖZÜMÜ: Parmağımızla her oynattığımızda Ayna modunu silmesin diye _mirrored sorgusu eklendi!
+    final newScale = v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale);
+
+    // ✅ 2. HATA ÇÖZÜMÜ: Eğim modunu hesaba katarak güncelleme yapıyoruz.
+    double tiltAngle = 0.0;
+    if (_tiltMode == 1) tiltAngle = math.pi / 12;
+    if (_tiltMode == 2) tiltAngle = math.pi / 6;
+
+    final newRotation =
+        v.Vector3((-math.pi / 2) + tiltAngle, _rotYRad, _rotZRad);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -156,6 +173,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
+    _baseRotYRad = _rotYRad;
     _baseRotZRad = _rotZRad;
   }
 
@@ -165,8 +183,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        // ✅ PLAK GİBİ DÖNME: Z ekseninde döndürme
-        _rotZRad = _baseRotZRad + d.rotation;
+        // ✅ 3. HATA ÇÖZÜMÜ: Sağa çevirince sola dönmesini engellemek için '+' işareti '-' yapıldı.
+        // Artık direksiyon nereye, resim oraya!
+        _rotZRad = _baseRotZRad - d.rotation;
       } else {
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
@@ -184,7 +203,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       imageNode = null;
       nodeName = null;
       _scale = 0.3;
-      _rotZRad = 0.0; // Temizlendiğinde sıfırla
+      _rotYRad = -math.pi / 2;
+      _rotZRad = 0.0;
       _liftMeters = 0.0;
       _tiltMode = 0;
       _mirrored = false;
@@ -197,20 +217,17 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _toggleTilt() {
     setState(() => _tiltMode = (_tiltMode + 1) % 3);
+    _updateNodeTransform(); // ✅ Eğim butonuna basıldığında anında resmi günceller
   }
 
   void _toggleMirror() {
     setState(() => _mirrored = !_mirrored);
-    if (_hasModel && nodeName != null) {
-      final currentScale = imageNode!.scale;
-      imageNode!.scale =
-          v.Vector3(-currentScale.x, currentScale.y, currentScale.z);
-      arkitController?.update(nodeName!, node: imageNode!);
-    }
+    _updateNodeTransform(); // ✅ Ayna butonuna basıldığında anında resmi günceller
   }
 
   void _rotPlus90() {
-    setState(() => _rotZRad += (math.pi / 2));
+    // Döndürme ekseni ters olduğu için butonu da eksi yaptık ki sağa 90 derece dönsün
+    setState(() => _rotZRad -= (math.pi / 2));
     _updateNodeTransform();
   }
 
