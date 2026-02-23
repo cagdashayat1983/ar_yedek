@@ -123,10 +123,11 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         geometry: plane,
         position: position,
         scale: startScale,
+        // ✅ DEĞİŞİKLİK 1: mirror açıkken Z rotasyonunu ters uygula
         eulerAngles: v.Vector3(
           (-math.pi / 2) + tiltAngle,
           _rotYRad,
-          _rotZRad,
+          _mirrored ? -_rotZRad : _rotZRad,
         ),
       );
 
@@ -154,8 +155,12 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     if (_tiltMode == 1) tiltAngle = math.pi / 12;
     if (_tiltMode == 2) tiltAngle = math.pi / 6;
 
-    final newRotation =
-        v.Vector3((-math.pi / 2) + tiltAngle, _rotYRad, _rotZRad);
+    // ✅ DEĞİŞİKLİK 2: mirror açıkken Z rotasyonunu ters uygula
+    final newRotation = v.Vector3(
+      (-math.pi / 2) + tiltAngle,
+      _rotYRad,
+      _mirrored ? -_rotZRad : _rotZRad,
+    );
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
