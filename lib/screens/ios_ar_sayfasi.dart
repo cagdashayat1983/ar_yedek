@@ -45,6 +45,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _opacity = 0.6;
 
+  // ✅ iPad / Tablet tespiti için
+  bool _isTablet = false;
+
   Timer? _toastTimer;
   String _toastText = "";
 
@@ -109,6 +112,10 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         hit.worldTransform.getColumn(3).y + _liftMeters,
         _posZ,
       );
+
+      // ✅ iPad’de başlangıç daha küçük olsun (ekrandan taşmasın)
+      final double startScaleValue = _isTablet ? 0.18 : _scale;
+      _scale = startScaleValue;
 
       // ✅ NEGATİF SCALE YOK: her zaman pozitif scale
       final startScale = v.Vector3(_scale, _scale, _scale);
@@ -191,18 +198,19 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
 
-        // ✅ SADECE BU DÜZELTME:
-        // Mirror açıkken pinch sırasında Z rotasyonu (roll) bozulma yapıyor.
-        // Bu yüzden mirror açıkken rotasyonu sabit tutuyoruz (scale bozulmaz).
+        // ✅ Mirror açıkken pinch sırasında Z rotasyonu bozulma yapıyordu → sabitle
         if (_mirrored) {
-          _rotZRad = _baseRotZRad; // ROTASYONU KİLİTLE
+          _rotZRad = _baseRotZRad;
         } else {
-          _rotZRad = _baseRotZRad + (_mirrored ? d.rotation : -d.rotation);
-          // (burada _mirrored zaten false; yani pratikte: _rotZRad = _baseRotZRad - d.rotation;)
+          _rotZRad = _baseRotZRad - d.rotation;
         }
       } else {
-        _posX += d.focalPointDelta.dx * 0.002;
-        _posZ += d.focalPointDelta.dy * 0.002;
+        // ✅ Taşıma hızını düşür + ani sıçramayı engelle (kaybolma biter)
+        final dx = d.focalPointDelta.dx.clamp(-25.0, 25.0);
+        final dy = d.focalPointDelta.dy.clamp(-25.0, 25.0);
+
+        _posX += dx * 0.0008;
+        _posZ += dy * 0.0008;
       }
     });
 
@@ -216,7 +224,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       imageNode = null;
       nodeName = null;
-      _scale = 0.3;
+      _scale = _isTablet ? 0.18 : 0.3; // ✅ iPad reset küçük
       _rotYRad = -math.pi / 2;
       _rotZRad = 0.0;
       _liftMeters = 0.0;
@@ -263,6 +271,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Tablet tespiti (iPad için)
+    _isTablet = MediaQuery.of(context).size.shortestSide >= 600;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
