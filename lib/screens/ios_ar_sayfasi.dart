@@ -18,7 +18,6 @@ class IosArSayfasi extends StatefulWidget {
 class _IosArSayfasiState extends State<IosArSayfasi> {
   ARKitController? arkitController;
 
-  // ✅ KESİN ÇÖZÜM: İki ayrı obje kullanıyoruz. Biri görünmez dönen tabure, diğeri yatan resim.
   ARKitNode? parentNode; // Görünmez tabure
   ARKitNode? imageNode; // Üstündeki resim
 
@@ -39,7 +38,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
 
-  // Başlangıçta yatay (manzara) gelmesi için tabureyi -90 derece çevrilmiş başlatıyoruz.
   double _rotYRad = -math.pi / 2;
   double _baseRotYRad = 0.0;
 
@@ -90,8 +88,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
-        lightingModel: ARKitLightingModel
-            .constant, // Eğreti durmayı engeller, netliği korur
+        emission: ARKitMaterialProperty.image(widget.imagePath),
         transparency: _opacity,
         doubleSided: true,
       );
@@ -106,23 +103,21 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       _posZ = hit.worldTransform.getColumn(3).z;
       final startY = hit.worldTransform.getColumn(3).y + _liftMeters;
 
-      // 1. Görünmez Tabureyi (Parent) Zemine Koy
+      // 1. Görünmez Tabure
       parentNode = ARKitNode(
         position: v.Vector3(_posX, startY, _posZ),
-        eulerAngles:
-            v.Vector3(0, _rotYRad, 0), // Sadece Y ekseninde (Pikap gibi) döner
+        eulerAngles: v.Vector3(0, _rotYRad, 0),
       );
       arkitController!.add(parentNode!);
 
-      // 2. Resmi (Child) Taburenin Üstüne Yatır
+      // 2. Taburenin Üstündeki Yatan Resim
       imageNode = ARKitNode(
         geometry: plane,
-        position: v.Vector3.zero(), // Taburenin tam merkezi
-        eulerAngles: v.Vector3(
-            -math.pi / 2, 0, 0), // Kalıcı olarak masaya yapıştırır/yatırır
+        position: v.Vector3.zero(),
+        eulerAngles: v.Vector3(-math.pi / 2, 0, 0),
         scale: v.Vector3.all(_scale),
       );
-      // Resmi tabureye bağlıyoruz
+
       arkitController!.add(imageNode!, parentNodeName: parentNode!.name);
 
       _showToast("✅ Resim Masaya Serildi!");
@@ -137,12 +132,10 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   void _updateNodeTransform() {
     if (!_hasModel) return;
 
-    // Sürükleme ve döndürme işlemlerini sadece TABUREYE uyguluyoruz
     parentNode!.position = v.Vector3(_posX, parentNode!.position.y, _posZ);
     parentNode!.eulerAngles = v.Vector3(0, _rotYRad, 0);
     arkitController?.update(parentNode!.name, node: parentNode!);
 
-    // Ölçeklendirmeyi RESME uyguluyoruz
     imageNode!.scale = v.Vector3.all(_scale);
     arkitController?.update(imageNode!.name, node: imageNode!);
   }
@@ -153,7 +146,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     final newMaterial = ARKitMaterial(
       diffuse: ARKitMaterialProperty.image(widget.imagePath),
-      lightingModel: ARKitLightingModel.constant,
+      emission: ARKitMaterialProperty.image(widget.imagePath),
       transparency: _opacity,
       doubleSided: true,
     );
@@ -172,10 +165,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        // İki parmak hareketi tabureyi döndürür (Asla takla atmaz)
         _rotYRad = _baseRotYRad + d.rotation;
       } else {
-        // Tek parmak hareketi yatay zeminde kaydırır
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
       }
@@ -186,14 +177,13 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _clearAll() {
     if (parentNode != null) {
-      arkitController?.remove(
-          parentNode!.name); // Parent silinince resim de otomatik silinir
+      arkitController?.remove(parentNode!.name);
     }
     setState(() {
       parentNode = null;
       imageNode = null;
       _scale = 0.3;
-      _rotYRad = -math.pi / 2; // Temizleyince yine yatay başlar
+      _rotYRad = -math.pi / 2;
       _liftMeters = 0.0;
       _tiltMode = 0;
       _mirrored = false;
@@ -476,6 +466,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 }
 
+// BU KISIM KOPYALANMADIĞI İÇİN HATA VERİYORDU:
 class GridPainter extends CustomPainter {
   final int gridCount;
   GridPainter({required this.gridCount});
