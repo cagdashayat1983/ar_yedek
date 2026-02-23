@@ -17,8 +17,14 @@ class IosArSayfasi extends StatefulWidget {
 
 class _IosArSayfasiState extends State<IosArSayfasi> {
   ARKitController? arkitController;
-  ARKitNode? imageNode;
-  String? nodeName;
+
+  // ✅ KESİN ÇÖZÜM: PARENT (TAŞIYICI) - CHILD (RESİM) MİMARİSİ
+  // ARKit'te objelerin eksenlerinin birbirine girmemesi (Gimbal Lock olmaması) için
+  // en garantili yöntem iki obje kullanmaktır.
+  ARKitNode?
+      parentNode; // Masadaki görünmez "Tepsi". Sadece döner ve hareket eder.
+  ARKitNode?
+      imageNode; // Resmin kendisi. Tepsinin içine kalıcı olarak YATIRILIR.
 
   bool _placing = false;
   bool _tapLocked = false;
@@ -34,9 +40,12 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _posX = 0.0;
   double _posZ = -0.5;
+  double _hitY = 0.0;
 
   double _baseScale = 0.3;
 
+  // Sadece tepsinin dönüşünü kontrol eder.
+  // Başlangıçta sana yan (manzara) gelmesi için -90 dereceden başlar.
   double _rotYRad = -math.pi / 2;
   double _baseRotYRad = 0.0;
 
@@ -45,7 +54,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   Timer? _toastTimer;
   String _toastText = "";
 
-  bool get _hasModel => imageNode != null;
+  bool get _hasModel => parentNode != null;
 
   void _showToast(String msg) {
     if (!mounted) return;
@@ -87,8 +96,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     try {
       final material = ARKitMaterial(
         diffuse: ARKitMaterialProperty.image(widget.imagePath),
-        emission: ARKitMaterialProperty.image(
-            widget.imagePath), // Parlaklık korunuyor
+        emission: ARKitMaterialProperty.image(widget.imagePath),
         transparency: _opacity,
         doubleSided: true,
       );
@@ -101,26 +109,26 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
       _posX = hit.worldTransform.getColumn(3).x;
       _posZ = hit.worldTransform.getColumn(3).z;
+      _hitY = hit.worldTransform.getColumn(3).y;
 
-      final position = v.Vector3(
-          _posX, hit.worldTransform.getColumn(3).y + _liftMeters, _posZ);
+      // 1. GÖRÜNMEZ TEPSİYİ YARAT (Sadece Y ekseninde döner, yani plak gibi masada çevrilir)
+      parentNode = ARKitNode(
+        position: v.Vector3(_posX, _hitY + _liftMeters, _posZ),
+        eulerAngles: v.Vector3(0, _rotYRad, 0),
+      );
+      arkitController!.add(parentNode!);
 
-      // ✅ DÜZELTME 1: Eğim Açısı Hesaplama
-      double tiltAngle = 0.0;
-      if (_tiltMode == 1) tiltAngle = math.pi / 12; // 15 Derece
-      if (_tiltMode == 2) tiltAngle = math.pi / 6; // 30 Derece
-
+      // 2. RESMİ YARAT VE TEPSİYE "YATIRARAK" MÜHÜRLE
       imageNode = ARKitNode(
         geometry: plane,
-        position: position,
-        // ✅ DÜZELTME 2: Aynalama açıkken de scale bozulmasın diye burası korumaya alındı
+        position: v.Vector3.zero(),
+        // Resim tepsiye "-90 derece" (yatay) mühürlendi. Bir daha ASLA dikilmez veya takla atmaz!
+        eulerAngles: v.Vector3(-math.pi / 2, 0, 0),
         scale: v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale),
-        // Eğim X eksenine ekleniyor, senin Y dönüşün korunuyor!
-        eulerAngles: v.Vector3((-math.pi / 2) + tiltAngle, _rotYRad, 0),
       );
 
-      arkitController!.add(imageNode!);
-      nodeName = imageNode!.name;
+      arkitController!.add(imageNode!, parentNodeName: parentNode!.name);
+
       _showToast("✅ Resim Masaya Serildi!");
       setState(() {});
     } catch (e) {
@@ -131,30 +139,32 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _updateNodeTransform() {
-    if (!_hasModel || nodeName == null) return;
+    if (!_hasModel) return;
 
-    final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
-
-    // ✅ DÜZELTME 2 (Devam): Pinch ile her büyüttüğünde Ayna eski haline dönmesin!
-    final newScale = v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale);
-
-    // ✅ DÜZELTME 1 (Devam): Eğimi güncellemelerde de uyguluyoruz
+    // Eğim (Tilt) hesaplaması
     double tiltAngle = 0.0;
-    if (_tiltMode == 1) tiltAngle = math.pi / 12;
-    if (_tiltMode == 2) tiltAngle = math.pi / 6;
+    if (_tiltMode == 1) tiltAngle = math.pi / 12; // 15 Derece
+    if (_tiltMode == 2) tiltAngle = math.pi / 6; // 30 Derece
 
-    final newRotation = v.Vector3((-math.pi / 2) + tiltAngle, _rotYRad, 0);
+    // Eğim olunca resim masaya batmasın diye hafif yukarı kalkar
+    double tiltLift = (_scale / 2) * math.sin(tiltAngle);
+    final currentY = _hitY + _liftMeters + tiltLift;
 
-    imageNode!.position = newPosition;
+    // SADECE TEPSİ GÜNCELLENİR: Resmin yatay mühürü bozulmaz.
+    parentNode!.position = v.Vector3(_posX, currentY, _posZ);
+    // Tepsiye plak dönüşü (Y) ve Eğim (X) verilir.
+    parentNode!.eulerAngles = v.Vector3(tiltAngle, _rotYRad, 0);
+    arkitController?.update(parentNode!.name, node: parentNode!);
+
+    // RESMİN SADECE ÖLÇEĞİ VE AYNASI GÜNCELLENİR
+    final newScale = v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale);
     imageNode!.scale = newScale;
-    imageNode!.eulerAngles = newRotation;
-
-    arkitController?.update(nodeName!, node: imageNode!);
+    arkitController?.update(imageNode!.name, node: imageNode!);
   }
 
   void _updateOpacity(double newOpacity) {
     setState(() => _opacity = newOpacity);
-    if (!_hasModel || nodeName == null) return;
+    if (imageNode == null) return;
 
     final newMaterial = ARKitMaterial(
       diffuse: ARKitMaterialProperty.image(widget.imagePath),
@@ -177,7 +187,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        // ✅ DÜZELTME 3: Pinch yönü tersine çevrildi (+ yerine - kondu)
+        // PARMAKLA DÖNDÜRME BURADA: (Ters yönde dönmesin diye eksi yapıldı)
         _rotYRad = _baseRotYRad - d.rotation;
       } else {
         _posX += d.focalPointDelta.dx * 0.002;
@@ -189,14 +199,14 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _clearAll() {
-    if (nodeName != null) {
-      arkitController?.remove(nodeName!);
+    if (parentNode != null) {
+      arkitController?.remove(parentNode!.name);
     }
     setState(() {
+      parentNode = null;
       imageNode = null;
-      nodeName = null;
       _scale = 0.3;
-      _rotYRad = -math.pi / 2; // Temizlendiğinde yine yatay başlasın
+      _rotYRad = -math.pi / 2;
       _liftMeters = 0.0;
       _tiltMode = 0;
       _mirrored = false;
@@ -209,32 +219,29 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _toggleTilt() {
     setState(() => _tiltMode = (_tiltMode + 1) % 3);
-    _updateNodeTransform(); // ✅ Eğim butonuna basıldığında anında resmi günceller
+    _updateNodeTransform();
   }
 
   void _toggleMirror() {
     setState(() => _mirrored = !_mirrored);
-    _updateNodeTransform(); // ✅ Ayna butonuna basıldığında anında resmi günceller
+    _updateNodeTransform();
   }
 
   void _rotPlus90() {
-    // Döndürme yönü değiştiği için bu buton da ona göre uyarlandı
     setState(() => _rotYRad -= (math.pi / 2));
     _updateNodeTransform();
   }
 
   void _liftUp() {
-    if (!_hasModel || nodeName == null) return;
+    if (!_hasModel) return;
     setState(() => _liftMeters += 0.01);
-    imageNode!.position = v.Vector3(_posX, imageNode!.position.y + 0.01, _posZ);
-    arkitController?.update(nodeName!, node: imageNode!);
+    _updateNodeTransform();
   }
 
   void _liftDown() {
-    if (!_hasModel || nodeName == null) return;
+    if (!_hasModel) return;
     setState(() => _liftMeters -= 0.01);
-    imageNode!.position = v.Vector3(_posX, imageNode!.position.y - 0.01, _posZ);
-    arkitController?.update(nodeName!, node: imageNode!);
+    _updateNodeTransform();
   }
 
   void _toggleFlash() => setState(() => _flashOn = !_flashOn);
