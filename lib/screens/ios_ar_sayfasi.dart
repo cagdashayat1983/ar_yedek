@@ -36,10 +36,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
 
-  double _rotYRad = -math.pi / 2;
-  double _baseRotYRad = 0.0;
-
-  double _rotZRad = 0.0;
+  double _rotZRad = -math.pi / 2;
   double _baseRotZRad = 0.0;
 
   double _opacity = 0.6;
@@ -106,15 +103,13 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       final position = v.Vector3(
           _posX, hit.worldTransform.getColumn(3).y + _liftMeters, _posZ);
 
-      // ✅ ÇÖZÜM: Negatif ölçek sündürme yaptığı için kaldırıldı. Aynalama işlemi 180 derece takla ile yapılıyor.
-      double rotX = _mirrored ? (math.pi / 2) : (-math.pi / 2);
-      double rotZ = _mirrored ? -_rotZRad : _rotZRad;
-
       imageNode = ARKitNode(
         geometry: plane,
         position: position,
-        scale: v.Vector3.all(_scale), // ASLA eksi almaz, orantısı %100 korunur.
-        eulerAngles: v.Vector3(rotX, _rotYRad, rotZ),
+        // ✅ AYNA ÇÖZÜMÜ: Eksi ölçek mantığı korundu ki oran bozulmasın.
+        scale: v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale),
+        // Eğim kaldırıldı, resim sadece X ekseninde -90 derece ile kusursuz yatay.
+        eulerAngles: v.Vector3(-math.pi / 2, 0, _rotZRad),
       );
 
       arkitController!.add(imageNode!);
@@ -133,14 +128,13 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
 
-    // ✅ ÇÖZÜM: Büyütüp küçültürken aynanın sündürmesini engelleyen geometri mantığı.
-    double rotX = _mirrored ? (math.pi / 2) : (-math.pi / 2);
-    double rotZ = _mirrored ? -_rotZRad : _rotZRad;
+    // Orantı kilidi: Pinch ile büyütürken ayna durumunu hafızada tutar, sündürmez.
+    final newScale = v.Vector3(_mirrored ? -_scale : _scale, _scale, _scale);
+    final newRotation = v.Vector3(-math.pi / 2, 0, _rotZRad);
 
     imageNode!.position = newPosition;
-    imageNode!.scale =
-        v.Vector3.all(_scale); // Orantı güncellemelerde de kilitli.
-    imageNode!.eulerAngles = v.Vector3(rotX, _rotYRad, rotZ);
+    imageNode!.scale = newScale;
+    imageNode!.eulerAngles = newRotation;
 
     arkitController?.update(nodeName!, node: imageNode!);
   }
@@ -161,7 +155,6 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
-    _baseRotYRad = _rotYRad;
     _baseRotZRad = _rotZRad;
   }
 
@@ -171,7 +164,11 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        _rotZRad = _baseRotZRad - d.rotation;
+
+        // ✅ ROTASYON ÇÖZÜMÜ: Eksi işareti Artı yapıldı (Direksiyon gibi döner).
+        // Ayna açıkken 3D yansıma gereği ters hissetmemen için ternary kalkanı eklendi.
+        double rotationDelta = _mirrored ? -d.rotation : d.rotation;
+        _rotZRad = _baseRotZRad + rotationDelta;
       } else {
         _posX += d.focalPointDelta.dx * 0.002;
         _posZ += d.focalPointDelta.dy * 0.002;
@@ -189,8 +186,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       imageNode = null;
       nodeName = null;
       _scale = 0.3;
-      _rotYRad = -math.pi / 2;
-      _rotZRad = 0.0;
+      _rotZRad = -math.pi / 2;
       _liftMeters = 0.0;
       _mirrored = false;
     });
@@ -202,11 +198,13 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _toggleMirror() {
     setState(() => _mirrored = !_mirrored);
-    _updateNodeTransform(); // ✅ Ayna butonuna basıldığında anında uygular
+    _updateNodeTransform();
   }
 
   void _rotPlus90() {
-    setState(() => _rotZRad -= (math.pi / 2));
+    // Ayna açıkken butonun da ters hissettirmemesi için kalkan eklendi
+    double step = _mirrored ? -(math.pi / 2) : (math.pi / 2);
+    setState(() => _rotZRad += step);
     _updateNodeTransform();
   }
 
