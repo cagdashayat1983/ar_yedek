@@ -27,6 +27,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   bool _isRecording = false;
 
   int _gridMode = 0;
+  int _tiltMode = 0;
 
   double _scale = 0.3;
   double _liftMeters = 0.0;
@@ -36,11 +37,15 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   double _baseScale = 0.3;
 
-  // Sadece bu eksen (Z) resmi döndürür ve yatay başlatır
-  double _rotZRad = -math.pi / 2;
+  double _rotYRad = -math.pi / 2;
+  double _baseRotYRad = 0.0;
+
+  double _rotZRad = 0.0;
   double _baseRotZRad = 0.0;
 
   double _opacity = 0.6;
+
+  // ✅ iPad / Tablet tespiti için
   bool _isTablet = false;
 
   Timer? _toastTimer;
@@ -108,21 +113,26 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         _posZ,
       );
 
+      // ✅ iPad’de başlangıç daha küçük olsun (ekrandan taşmasın)
       final double startScaleValue = _isTablet ? 0.18 : _scale;
       _scale = startScaleValue;
 
-      // ✅ SCALE HER ZAMAN POZİTİF
-      final startScale = v.Vector3.all(_scale);
+      // ✅ NEGATİF SCALE YOK: her zaman pozitif scale
+      final startScale = v.Vector3(_scale, _scale, _scale);
 
-      // ✅ Yatay + ayna
-      final rotX = -math.pi / 2;
-      final rotY = _mirrored ? math.pi : 0.0;
+      // ✅ Tilt
+      double tiltAngle = 0.0;
+      if (_tiltMode == 1) tiltAngle = math.pi / 12; // 15
+      if (_tiltMode == 2) tiltAngle = math.pi / 6; // 30
+
+      // ✅ Mirror = X ekseninde 180° çevir (plane düz kalır, bozulma olmaz)
+      final xAngle = (-math.pi / 2) + tiltAngle + (_mirrored ? math.pi : 0.0);
 
       imageNode = ARKitNode(
         geometry: plane,
         position: position,
         scale: startScale,
-        eulerAngles: v.Vector3(rotX, rotY, _rotZRad),
+        eulerAngles: v.Vector3(xAngle, _rotYRad, _rotZRad),
       );
 
       arkitController!.add(imageNode!);
@@ -140,11 +150,19 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     if (!_hasModel || nodeName == null) return;
 
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
-    final newScale = v.Vector3.all(_scale);
 
-    final rotX = -math.pi / 2;
-    final rotY = _mirrored ? math.pi : 0.0;
-    final newRotation = v.Vector3(rotX, rotY, _rotZRad);
+    // ✅ NEGATİF SCALE YOK: her zaman pozitif scale
+    final newScale = v.Vector3(_scale, _scale, _scale);
+
+    // ✅ Tilt
+    double tiltAngle = 0.0;
+    if (_tiltMode == 1) tiltAngle = math.pi / 12;
+    if (_tiltMode == 2) tiltAngle = math.pi / 6;
+
+    // ✅ Mirror = X ekseninde 180° çevir
+    final xAngle = (-math.pi / 2) + tiltAngle + (_mirrored ? math.pi : 0.0);
+
+    final newRotation = v.Vector3(xAngle, _rotYRad, _rotZRad);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -169,6 +187,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   void _onScaleStart(ScaleStartDetails d) {
     _baseScale = _scale;
+    _baseRotYRad = _rotYRad;
     _baseRotZRad = _rotZRad;
   }
 
@@ -177,17 +196,14 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
     setState(() {
       if (d.pointerCount > 1) {
-        // ✅ İSTEDİĞİN: Ayna açıkken SCALE çalışmasın
+        // ✅ İSTEDİĞİN DÜZELTME: Sadece ayna KAPALIYSA büyütebilir/döndürebilirsin.
+        // Ayna açıkken kilitli kalır, "1 kere sıçrama" veya bozulma asla yapmaz.
         if (!_mirrored) {
           _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        } else {
-          // Ayna açıkken pinch scale tamamen kilitli (mevcut scale sabit kalır)
-          _scale = _baseScale;
+          _rotZRad = _baseRotZRad - d.rotation;
         }
-
-        // (İstersen rotation kalsın; scale kapalıyken de döndürme çalışır)
-        _rotZRad = _baseRotZRad + (_mirrored ? d.rotation : -d.rotation);
       } else {
+        // ✅ Taşıma hızını düşür + ani sıçramayı engelle (kaybolma biter)
         final dx = d.focalPointDelta.dx.clamp(-25.0, 25.0);
         final dy = d.focalPointDelta.dy.clamp(-25.0, 25.0);
 
@@ -206,9 +222,11 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     setState(() {
       imageNode = null;
       nodeName = null;
-      _scale = _isTablet ? 0.18 : 0.3;
-      _rotZRad = -math.pi / 2;
+      _scale = _isTablet ? 0.18 : 0.3; // ✅ iPad reset küçük
+      _rotYRad = -math.pi / 2;
+      _rotZRad = 0.0;
       _liftMeters = 0.0;
+      _tiltMode = 0;
       _mirrored = false;
     });
     _showToast("Temizlendi. Tekrar dokunabilirsin.");
@@ -217,13 +235,18 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   void _toggleGrid() => setState(() => _gridMode =
       (_gridMode == 0) ? 3 : (_gridMode == 3 ? 4 : (_gridMode == 4 ? 5 : 0)));
 
+  void _toggleTilt() {
+    setState(() => _tiltMode = (_tiltMode + 1) % 3);
+    _updateNodeTransform();
+  }
+
   void _toggleMirror() {
     setState(() => _mirrored = !_mirrored);
     _updateNodeTransform();
   }
 
   void _rotPlus90() {
-    setState(() => _rotZRad += (_mirrored ? (math.pi / 2) : -(math.pi / 2)));
+    setState(() => _rotZRad -= (math.pi / 2));
     _updateNodeTransform();
   }
 
@@ -246,6 +269,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Tablet tespiti (iPad için)
     _isTablet = MediaQuery.of(context).size.shortestSide >= 600;
 
     return Scaffold(
@@ -399,6 +423,14 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                               _tapLocked,
                               Colors.redAccent,
                               () => setState(() => _tapLocked = !_tapLocked),
+                            ),
+                            const SizedBox(width: 8),
+                            _btn(
+                              Icons.view_in_ar,
+                              _tiltMode == 0 ? "Eğim" : "${_tiltMode}x",
+                              _tiltMode > 0,
+                              Colors.orangeAccent,
+                              _toggleTilt,
                             ),
                             const SizedBox(width: 8),
                             _btn(
