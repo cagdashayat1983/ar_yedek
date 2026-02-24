@@ -14,9 +14,8 @@ import 'profile_screen.dart';
 import 'subscription_screen.dart';
 import 'learn_screen.dart';
 
-// 🍎🍏 DÜN YAZDIĞIMIZ DOSYALARIN İMPORTLARI (Dosya yollarını kendi projene göre düzenleyebilirsin)
 import 'ios_ar_sayfasi.dart';
-import 'ar_mini_test_screen.dart'; // Dünkü Android sayfanın (ARMiniTestScreen) olduğu dosya
+import 'ar_mini_test_screen.dart';
 
 class DesignItem {
   final String path;
@@ -103,6 +102,7 @@ class _TemplatesScreenState extends State<TemplatesScreen>
     }
   }
 
+  // ✅ AKILLI KÖPRÜ: GALERİDEN SEÇİM İŞLEMİ
   Future<void> _pickFromGallery() async {
     HapticFeedback.mediumImpact();
     final ImagePicker picker = ImagePicker();
@@ -110,21 +110,33 @@ class _TemplatesScreenState extends State<TemplatesScreen>
 
     if (image != null) {
       if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => DrawingScreen(
-            category: CategoryModel(
-              title: "Galerim",
-              color: Colors.purpleAccent,
-              templateFolder: "",
-              imagePath: "",
-            ),
-            cameras: widget.cameras,
-            imagePath: image.path,
+
+      if (Platform.isIOS) {
+        // iPhone ise PRO AR'a git
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => IosArSayfasi(imagePath: image.path),
           ),
-        ),
-      );
+        );
+      } else {
+        // Android ise Çizim Ekranına git
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DrawingScreen(
+              category: CategoryModel(
+                title: "Galerim",
+                color: Colors.purpleAccent,
+                templateFolder: "",
+                imagePath: "",
+              ),
+              cameras: widget.cameras,
+              imagePath: image.path,
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -451,9 +463,7 @@ class _TemplatesScreenState extends State<TemplatesScreen>
                                     }
                                     final DateTime startTime = DateTime.now();
 
-                                    // 🌉🌉 AKILLI KÖPRÜ BAŞLANGICI 🌉🌉
                                     if (Platform.isIOS) {
-                                      // 🍎 Cihaz Apple ise: Doğrudan PNG'yi yolla
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
@@ -469,7 +479,6 @@ class _TemplatesScreenState extends State<TemplatesScreen>
                                             10) _addXp();
                                       });
                                     } else {
-                                      // 🤖 Cihaz Android ise: Uzantıyı değiştirip GLB yolla
                                       String glbPath = item.path
                                           .replaceAll('.png', '.glb')
                                           .replaceAll('.jpg', '.glb')
@@ -479,7 +488,6 @@ class _TemplatesScreenState extends State<TemplatesScreen>
                                         context,
                                         MaterialPageRoute(
                                           builder: (_) => ARMiniTestScreen(
-                                            // Dosya/Sınıf adını kendi projene göre kontrol et
                                             glbAssetPath: glbPath,
                                           ),
                                         ),
@@ -491,7 +499,6 @@ class _TemplatesScreenState extends State<TemplatesScreen>
                                             10) _addXp();
                                       });
                                     }
-                                    // 🌉🌉 AKILLI KÖPRÜ SONU 🌉🌉
                                   },
                                   child: Stack(
                                     children: [

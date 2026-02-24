@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'dart:ui';
-import 'dart:io';
+import 'dart:io'; // Platform kontrolü için
 import 'dart:math';
 import 'dart:async';
 
@@ -18,6 +18,9 @@ import 'drawing_screen.dart';
 import 'learn_screen.dart';
 import 'subscription_screen.dart';
 import 'profile_screen.dart';
+
+// ✅ PRO AR MODU İÇİN İMPORT EKLENDİ
+import 'ios_ar_sayfasi.dart';
 
 class CategoriesScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -139,22 +142,33 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     }
   }
 
+  // ✅ AKILLI KÖPRÜ: GALERİDEN SEÇİM İŞLEMİ
   Future<void> _pickFromGallery() async {
     HapticFeedback.heavyImpact();
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+
     if (image != null && mounted) {
-      Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (_) => DrawingScreen(
-                  category: CategoryModel(
-                      title: "Galerim",
-                      color: Colors.purple,
-                      templateFolder: "",
-                      imagePath: ""),
-                  cameras: widget.cameras,
-                  imagePath: image.path)));
+      if (Platform.isIOS) {
+        // iPhone ise PRO AR'a git
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => IosArSayfasi(imagePath: image.path)));
+      } else {
+        // Android ise Çizim Ekranına git
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => DrawingScreen(
+                    category: CategoryModel(
+                        title: "Galerim",
+                        color: Colors.purple,
+                        templateFolder: "",
+                        imagePath: ""),
+                    cameras: widget.cameras,
+                    imagePath: image.path)));
+      }
     }
   }
 
@@ -186,7 +200,6 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     final categoryToShow = _randomTemplateCategory ?? _categories[2];
 
     return Scaffold(
-      // extendBody: true, // ✅ BU KALDIRILDI. Artık body, bottomBar'ın altına girmeyecek.
       backgroundColor: const Color(0xFFF5F7FA),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -220,8 +233,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(
-                        20, 0, 20, 20), // Alt boşluk azaltıldı
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                     sliver: AnimationLimiter(
                       child: SliverList(
                         delegate: SliverChildBuilderDelegate(
@@ -250,7 +262,6 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         ),
       ),
       floatingActionButton: _buildAnimatedFAB(),
-      // ✅ İsim güncellendi
       bottomNavigationBar: _buildNormalBottomBar(),
     );
   }
@@ -325,13 +336,24 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         ElevatedButton(
           onPressed: () {
             if (_randomTemplatePath != null) {
-              Navigator.push(
+              // ✅ AKILLI KÖPRÜ EKLENEBİLİR: iOS İSE AR'A, DEĞİLSE NORMAL'E GİT.
+              if (Platform.isIOS) {
+                Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => DrawingScreen(
-                          category: cat,
-                          cameras: widget.cameras,
-                          imagePath: _randomTemplatePath!)));
+                    builder: (_) =>
+                        IosArSayfasi(imagePath: _randomTemplatePath!),
+                  ),
+                );
+              } else {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => DrawingScreen(
+                            category: cat,
+                            cameras: widget.cameras,
+                            imagePath: _randomTemplatePath!)));
+              }
             }
           },
           style: ElevatedButton.styleFrom(
@@ -443,15 +465,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
   }
 
-  // ✅ TAMAMEN NORMALLEŞTİRİLMİŞ BOTTOM BAR
   Widget _buildNormalBottomBar() {
     return Container(
-      // ✅ Kabartma (shadow) yok. Sadece üstte ince bir çizgi var.
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)),
       ),
-      // ✅ SafeArea içine alındı ki yeni telefonlarda altta kalmasın
       child: SafeArea(
         child: BottomNavigationBar(
           currentIndex: _bottomIndex,
@@ -470,9 +489,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
               Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const ProfileScreen()));
           },
-          backgroundColor:
-              Colors.transparent, // Arka planı container hallediyor
-          elevation: 0, // Kendi gölgesi de yok
+          backgroundColor: Colors.transparent,
+          elevation: 0,
           type: BottomNavigationBarType.fixed,
           showSelectedLabels: true,
           showUnselectedLabels: true,
