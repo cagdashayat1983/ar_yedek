@@ -194,6 +194,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   void _onScaleUpdate(ScaleUpdateDetails d) {
     if (!_hasModel || _tapLocked) return;
 
+    // ✅ SADECE BU: Ayna açıkken 2 parmak pinch (scale/rotate) iptal
+    if (_mirrored && d.pointerCount > 1) return;
+
     setState(() {
       if (d.pointerCount > 1) {
         _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
