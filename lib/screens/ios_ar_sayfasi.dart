@@ -35,6 +35,8 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   double _posZ = -0.5;
 
   double _baseScale = 0.3;
+
+  // Sadece bu eksen (Z) resmi döndürür ve yatay başlatır
   double _rotZRad = -math.pi / 2;
   double _baseRotZRad = 0.0;
 
@@ -106,21 +108,21 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         _posZ,
       );
 
-      _scale = _isTablet ? 0.18 : _scale;
+      final double startScaleValue = _isTablet ? 0.18 : _scale;
+      _scale = startScaleValue;
 
-      // ✅ KESİN ÇÖZÜM 1: Eksi Scale tamamen iptal. Oran daima kusursuz.
+      // ✅ SCALE HER ZAMAN POZİTİF
       final startScale = v.Vector3.all(_scale);
 
-      // ✅ KESİN ÇÖZÜM 2: Y eksenini çevirmek yerine resmi kağıt gibi X ekseninde ters çeviriyoruz.
-      // (Gimbal Lock engellendi, takla atma tamamen bitti!)
-      final double rotX = _mirrored ? (math.pi / 2) : (-math.pi / 2);
-      final double rotZ = _mirrored ? (math.pi - _rotZRad) : _rotZRad;
+      // ✅ Yatay + ayna
+      final rotX = -math.pi / 2;
+      final rotY = _mirrored ? math.pi : 0.0;
 
       imageNode = ARKitNode(
         geometry: plane,
         position: position,
         scale: startScale,
-        eulerAngles: v.Vector3(rotX, 0.0, rotZ),
+        eulerAngles: v.Vector3(rotX, rotY, _rotZRad),
       );
 
       arkitController!.add(imageNode!);
@@ -140,9 +142,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     final newPosition = v.Vector3(_posX, imageNode!.position.y, _posZ);
     final newScale = v.Vector3.all(_scale);
 
-    final double rotX = _mirrored ? (math.pi / 2) : (-math.pi / 2);
-    final double rotZ = _mirrored ? (math.pi - _rotZRad) : _rotZRad;
-    final newRotation = v.Vector3(rotX, 0.0, rotZ);
+    final rotX = -math.pi / 2;
+    final rotY = _mirrored ? math.pi : 0.0;
+    final newRotation = v.Vector3(rotX, rotY, _rotZRad);
 
     imageNode!.position = newPosition;
     imageNode!.scale = newScale;
@@ -173,16 +175,19 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   void _onScaleUpdate(ScaleUpdateDetails d) {
     if (!_hasModel || _tapLocked) return;
 
-    // ✅ TAM İSTEDİĞİN GİBİ: Ayna açıkken Pinch (iki parmakla büyütme/döndürme) tamamen kilitlendi!
-    if (_mirrored && d.pointerCount > 1) return;
-
     setState(() {
       if (d.pointerCount > 1) {
-        _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
-        // Direksiyon gibi çevirme eklendi
-        _rotZRad = _baseRotZRad - d.rotation;
+        // ✅ İSTEDİĞİN: Ayna açıkken SCALE çalışmasın
+        if (!_mirrored) {
+          _scale = (_baseScale * d.scale).clamp(0.05, 3.0);
+        } else {
+          // Ayna açıkken pinch scale tamamen kilitli (mevcut scale sabit kalır)
+          _scale = _baseScale;
+        }
+
+        // (İstersen rotation kalsın; scale kapalıyken de döndürme çalışır)
+        _rotZRad = _baseRotZRad + (_mirrored ? d.rotation : -d.rotation);
       } else {
-        // Tek parmak taşıma hep serbest
         final dx = d.focalPointDelta.dx.clamp(-25.0, 25.0);
         final dy = d.focalPointDelta.dy.clamp(-25.0, 25.0);
 
@@ -218,7 +223,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _rotPlus90() {
-    setState(() => _rotZRad -= (math.pi / 2));
+    setState(() => _rotZRad += (_mirrored ? (math.pi / 2) : -(math.pi / 2)));
     _updateNodeTransform();
   }
 
