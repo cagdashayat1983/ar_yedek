@@ -18,8 +18,6 @@ import 'package:vector_math/vector_math_64.dart' as v;
 
 class ARMiniTestScreen extends StatefulWidget {
   final String glbAssetPath;
-  // EĞER SAYDAMLIK KULLANACAKSAN GLB YERİNE PNG LAZIM, BURAYA PNG YOLUNU DA VEREBİLİRSİN
-  // Örn: assets/fil.png
 
   const ARMiniTestScreen({super.key, required this.glbAssetPath});
 
@@ -51,11 +49,10 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   int _gridMode = 0;
   int _tiltMode = 0;
 
-  // Transform
-  double _scale = 0.6;
+  // ✅ ÇÖZÜM 1: Başlangıç boyutu 0.6'dan 1.0'a çıkarıldı. (Direkt %100 boyutunda başlar)
+  double _scale = 1.0;
   double _rotYDeg = 0.0;
 
-  // ✅ ZEMİNE YAPIŞTIRMA FİX 1: LiftMeters tam sıfır olmalı ki masanın altına veya üstüne kaçmasın.
   double _liftMeters = 0.0;
   static const double _liftStep = 0.01;
 
@@ -63,15 +60,13 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   double _posZ = 0.0;
   static const double _dragToMeters = 0.0012;
 
-  double _baseScale = 0.6;
+  double _baseScale = 1.0;
   double _baseRotYDeg = 0.0;
   double _baseX = 0.0;
   double _baseZ = 0.0;
 
-  // ✅ YENİ: RAKİBİN SIRRI OLAN SAYDAMLIK (OPACITY) DEĞERİ
   double _opacity = 0.6;
-  // ✅ YENİ: GERÇEK AR MI YOKSA KAMERA ÜSTÜ İLLÜZYON MU?
-  bool _useIllusionMode = false;
+  bool _useIllusionMode = true; // Direkt Çizim Modu
 
   Timer? _updateTimer;
   bool _rebuilding = false;
@@ -79,7 +74,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   String _toastText = "";
 
   bool get _hasModel => _activeNode != null && _activeAnchor != null;
-  static const double _inPlaneFlipRad = math.pi;
 
   void _showToast(String msg) {
     if (!mounted) return;
@@ -118,7 +112,9 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     _objects!.onInitialize();
     _session!.onPlaneOrPointTap = _onPlaneOrPointTap;
 
-    _showToast("Plane görünce dokun → model 1 kez eklensin.");
+    if (!_useIllusionMode) {
+      _showToast("Plane görünce dokun → model eklensin.");
+    }
   }
 
   double _degToRad(double deg) => deg * math.pi / 180.0;
@@ -128,8 +124,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   v.Vector4 _combinedRotation() {
     final tiltDeg = _tiltMode == 0 ? 0.0 : (_tiltMode == 1 ? 15.0 : 30.0);
 
-    // ✅ ÇÖZÜM 1 (DİK DURMA SORUNU): Resmin AR'da masaya yatması için X ekseninde -90 derece dönmesi gerekir.
-    // Senin kodunda burası 0.0 idi, o yüzden resim havada dik duruyordu.
     final qBase = v.Quaternion.axisAngle(
       v.Vector3(1, 0, 0),
       -math.pi / 2,
@@ -138,7 +132,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     double yawDeg = (_rotYDeg + 180.0) % 360.0;
     if (_mirrored) yawDeg = (360.0 - yawDeg) % 360.0;
 
-    // ✅ ÇÖZÜM 3 (YAN DÖNME SORUNU): Resim yattığı için artık Dünya Y ekseni, resmin kendi merkezinde (plak gibi) dönmesini sağlar.
     final qYawWorld = v.Quaternion.axisAngle(
       v.Vector3(0, 1, 0),
       _degToRad(yawDeg),
@@ -224,7 +217,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   }
 
   Future<void> _onPlaneOrPointTap(List<ARHitTestResult?> hits) async {
-    // İllüzyon modundaysa AR'a dokunmaya gerek yok
     if (_useIllusionMode) return;
 
     if (_isMultiTouch) return;
@@ -298,7 +290,7 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     setState(() {
       _activeNode = null;
       _activeAnchor = null;
-      _scale = 0.6;
+      _scale = 1.0; // SIFIRLARKEN DE YİNE BÜYÜK OLSUN
       _rotYDeg = 0.0;
       _liftMeters = 0.0;
       _posX = 0.0;
@@ -320,11 +312,16 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   void _onScaleUpdate(ScaleUpdateDetails d) {
     if (!_hasModel && !_useIllusionMode) return;
 
+    if (_mirrored && _isMultiTouch) return;
+
     if (_isMultiTouch) {
       _lastGestureAt = DateTime.now();
       final newScale = (_baseScale * d.scale).clamp(0.05, 3.0);
       final deltaDeg = d.rotation * 180.0 / math.pi;
-      final newRot = (_baseRotYDeg + deltaDeg) % 360.0;
+
+      final newRot = _useIllusionMode
+          ? (_baseRotYDeg + deltaDeg) % 360.0
+          : (_baseRotYDeg - deltaDeg) % 360.0;
 
       setState(() {
         _scale = newScale;
@@ -333,9 +330,9 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
       if (!_useIllusionMode) _debounceApply();
     } else {
       final dx =
-          d.focalPointDelta.dx * (_useIllusionMode ? 1.5 : _dragToMeters);
+          d.focalPointDelta.dx * (_useIllusionMode ? 1.0 : _dragToMeters);
       final dz =
-          d.focalPointDelta.dy * (_useIllusionMode ? 1.5 : _dragToMeters);
+          d.focalPointDelta.dy * (_useIllusionMode ? 1.0 : _dragToMeters);
 
       setState(() {
         _posX = _baseX + dx;
@@ -375,12 +372,20 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   }
 
   void _rotPlus90() {
-    setState(() => _rotYDeg = (_rotYDeg + 90.0) % 360.0);
+    setState(() => _rotYDeg = _useIllusionMode
+        ? (_rotYDeg + 90.0) % 360.0
+        : (_rotYDeg - 90.0) % 360.0);
     if (!_useIllusionMode) _debounceApply(ms: 80);
   }
 
-  void _toggleFlash() => setState(() => _flashOn = !_flashOn);
-  void _toggleRecording() => setState(() => _isRecording = !_isRecording);
+  void _toggleFlash() {
+    setState(() => _flashOn = !_flashOn);
+  }
+
+  void _toggleRecording() {
+    setState(() => _isRecording = !_isRecording);
+  }
+
   void _liftUp() {
     setState(() => _liftMeters = (_liftMeters + _liftStep).clamp(-0.30, 0.60));
     if (!_useIllusionMode) _debounceApply(ms: 50);
@@ -395,14 +400,14 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // PNG yolu (glb yerine resim göstermek için illüzyon modunda kullanılır)
-    String pngPath = widget.glbAssetPath.replaceAll('.glb', '.png');
+    String pngPath = widget.glbAssetPath
+        .replaceAll('assets/models/', 'assets/templates/')
+        .replaceAll('.glb', '.png');
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. KATMAN: AR KAMERA VE GERÇEK 3D AR MODU
           Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (_) => setState(() => _activePointers++),
@@ -422,31 +427,28 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                     planeDetectionConfig:
                         PlaneDetectionConfig.horizontalAndVertical,
                   ),
-
-                  // ✅ 2. KATMAN: RAKİBİN YAPTIĞI "SAYDAMLIKLI İLLÜZYON MODU" (ÇİZİM MODU)
                   if (_useIllusionMode)
                     Positioned.fill(
                       child: Center(
                         child: Opacity(
-                          opacity: _opacity, // SLIDER BURAYI KONTROL EDER
+                          opacity: _opacity,
                           child: Transform(
                             alignment: FractionalOffset.center,
                             transform: Matrix4.identity()
-                              ..setEntry(3, 2, 0.001) // 3D Derinlik
-                              // ✅ ÇÖZÜM 1 (İllüzyon Modu Dik Durma): Eğim butonuna (tiltMode) basmadığında resim masada YATAY başlar (65 derece).
+                              ..setEntry(3, 2, 0.001)
+                              ..translate(_posX, _posZ)
                               ..rotateX(_degToRad(_tiltMode == 0
                                   ? 65.0
-                                  : (_tiltMode == 1
-                                      ? 45.0
-                                      : 0.0))) // Yere Yatma
-                              ..rotateZ(
-                                  _degToRad(_rotYDeg)) // Kendi ekseninde dönme
-                              ..translate(_posX, _posZ), // Parmağınla sürükleme
+                                  : (_tiltMode == 1 ? 45.0 : 0.0)))
+                              ..rotateZ(_degToRad(_rotYDeg))
+                              ..scale(_scale, _scale, 1.0),
                             child: Transform.flip(
                               flipX: _mirrored,
+                              // ✅ ÇÖZÜM 2: Resim ekranın %90'ını kaplayacak şekilde DEVASA ve NET açılır. Asla bozulmaz!
                               child: Image.asset(
-                                pngPath, // Ekranda PNG resmini gösterir
-                                width: 300 * _scale,
+                                pngPath,
+                                width: MediaQuery.of(context).size.width * 0.9,
+                                fit: BoxFit.contain,
                                 errorBuilder: (c, o, s) => const Icon(
                                     Icons.broken_image,
                                     color: Colors.white,
@@ -461,7 +463,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
               ),
             ),
           ),
-
           if (_gridMode > 0)
             IgnorePointer(
               child: Positioned.fill(
@@ -472,7 +473,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                 ),
               ),
             ),
-
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
@@ -495,21 +495,23 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                           icon:
                               const Icon(Icons.arrow_back, color: Colors.white),
                         ),
-                        // MOD DEĞİŞTİRİCİ BUTON (Gerçek AR <-> Saydam Çizim Modu)
                         TextButton.icon(
                           onPressed: () async {
                             await _clearAll();
                             setState(
                                 () => _useIllusionMode = !_useIllusionMode);
+                            if (!_useIllusionMode) {
+                              _showToast("AR Modu: Zemine dokun.");
+                            }
                           },
                           icon: Icon(
                             _useIllusionMode
-                                ? Icons.edit_note
-                                : Icons.view_in_ar,
+                                ? Icons.view_in_ar
+                                : Icons.edit_note,
                             color: Colors.cyanAccent,
                           ),
                           label: Text(
-                            _useIllusionMode ? "ÇİZİM MODU" : "AR MODU",
+                            _useIllusionMode ? "AR'A GEÇ" : "ÇİZİME GEÇ",
                             style: const TextStyle(
                                 color: Colors.cyanAccent,
                                 fontWeight: FontWeight.bold),
@@ -535,8 +537,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
               ),
             ),
           ),
-
-          // ALT MENÜ
           Positioned(
             left: 10,
             right: 10,
@@ -544,7 +544,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ✅ ÇÖZÜM 2 (OPACITY SLIDER): Sadece Çizim modunda görünür ve Opacity'i ayarlar.
                 if (_useIllusionMode)
                   Container(
                     margin: const EdgeInsets.only(bottom: 10),
@@ -570,7 +569,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                       ],
                     ),
                   ),
-
                 ClipRRect(
                   borderRadius: BorderRadius.circular(35),
                   child: BackdropFilter(
@@ -594,15 +592,17 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                         physics: const BouncingScrollPhysics(),
                         child: Row(
                           children: [
-                            _btn(
-                                _isRecording
-                                    ? Icons.stop_circle_outlined
-                                    : Icons.videocam,
-                                _isRecording ? "Durdur" : "Kaydet",
-                                _isRecording,
-                                Colors.redAccent,
-                                _toggleRecording),
-                            const SizedBox(width: 8),
+                            if (_useIllusionMode) ...[
+                              _btn(
+                                  _isRecording
+                                      ? Icons.stop_circle_outlined
+                                      : Icons.videocam,
+                                  _isRecording ? "Durdur" : "Kaydet",
+                                  _isRecording,
+                                  Colors.redAccent,
+                                  _toggleRecording),
+                              const SizedBox(width: 8),
+                            ],
                             _btn(
                                 _tapLocked ? Icons.lock : Icons.lock_open,
                                 "Kilit",
@@ -635,9 +635,11 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                                 _gridMode > 0,
                                 Colors.greenAccent,
                                 _toggleGrid),
-                            const SizedBox(width: 8),
-                            _btn(_flashOn ? Icons.flash_on : Icons.flash_off,
-                                "Flaş", _flashOn, Colors.amber, _toggleFlash),
+                            if (_useIllusionMode) ...[
+                              const SizedBox(width: 8),
+                              _btn(_flashOn ? Icons.flash_on : Icons.flash_off,
+                                  "Flaş", _flashOn, Colors.amber, _toggleFlash),
+                            ],
                           ],
                         ),
                       ),

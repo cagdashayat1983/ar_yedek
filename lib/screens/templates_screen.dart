@@ -50,18 +50,18 @@ class _TemplatesScreenState extends State<TemplatesScreen>
     with SingleTickerProviderStateMixin {
   late SharedPreferences _prefs;
   final ScrollController _scroll = ScrollController();
-  final TextEditingController _search = TextEditingController();
 
   bool _isProUser = false;
   bool _loading = true;
   int _bottomIndex = 0;
+
   String _selectedTab = "Hepsi";
-
-  int _userLevel = 1;
-  int _currentXp = 0;
-  int _requiredXp = 100;
-
   final List<String> _tabs = ["Hepsi", "Kolay", "Orta", "Zor"];
+
+  // ✅ ARAMA YERİNE FİLTRELEME (SIRALAMA) SİSTEMİ EKLENDİ
+  String _selectedSort = "En Yeni";
+  final List<String> _sortOptions = ["En Yeni", "En Eski", "En Popüler"];
+
   List<DesignItem> _all = [];
   List<DesignItem> _shown = [];
 
@@ -75,13 +75,11 @@ class _TemplatesScreenState extends State<TemplatesScreen>
       ..repeat(reverse: true);
 
     _init();
-    _search.addListener(_apply);
   }
 
   @override
   void dispose() {
     _scroll.dispose();
-    _search.dispose();
     _shimmerController.dispose();
     super.dispose();
   }
@@ -92,9 +90,6 @@ class _TemplatesScreenState extends State<TemplatesScreen>
     try {
       _prefs = await SharedPreferences.getInstance();
       _isProUser = _prefs.getBool('is_pro_user') ?? false;
-      _userLevel = _prefs.getInt('user_level') ?? 1;
-      _currentXp = _prefs.getInt('user_xp') ?? 0;
-      _requiredXp = _userLevel * 100;
       await _loadAssetsAuto();
       _apply();
     } finally {
@@ -102,7 +97,6 @@ class _TemplatesScreenState extends State<TemplatesScreen>
     }
   }
 
-  // ✅ AKILLI KÖPRÜ: GALERİDEN SEÇİM İŞLEMİ
   Future<void> _pickFromGallery() async {
     HapticFeedback.mediumImpact();
     final ImagePicker picker = ImagePicker();
@@ -112,7 +106,6 @@ class _TemplatesScreenState extends State<TemplatesScreen>
       if (!mounted) return;
 
       if (Platform.isIOS) {
-        // iPhone ise PRO AR'a git
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -120,7 +113,6 @@ class _TemplatesScreenState extends State<TemplatesScreen>
           ),
         );
       } else {
-        // Android ise Çizim Ekranına git
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -140,57 +132,6 @@ class _TemplatesScreenState extends State<TemplatesScreen>
     }
   }
 
-  Future<void> _addXp() async {
-    int gain = 20;
-    int newXp = _currentXp + gain;
-    if (newXp >= _requiredXp) {
-      newXp = newXp - _requiredXp;
-      _userLevel++;
-      _requiredXp = _userLevel * 100;
-      _showLevelUpDialog();
-    }
-    await _prefs.setInt('user_level', _userLevel);
-    await _prefs.setInt('user_xp', newXp);
-    if (mounted) setState(() => _currentXp = newXp);
-  }
-
-  void _showLevelUpDialog() {
-    HapticFeedback.heavyImpact();
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.stars_rounded, size: 60, color: Colors.amber),
-              const SizedBox(height: 10),
-              Text("TEBRİKLER!",
-                  style: GoogleFonts.poppins(
-                      fontSize: 22, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 5),
-              Text("Seviye $_userLevel oldun!",
-                  style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey)),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12))),
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text("Harika!",
-                    style: TextStyle(color: Colors.white)),
-              )
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _loadAssetsAuto() async {
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
     final allAssets = manifest.listAssets();
@@ -201,17 +142,18 @@ class _TemplatesScreenState extends State<TemplatesScreen>
         .where((p) =>
             p.endsWith(".png") || p.endsWith(".jpg") || p.endsWith(".webp"))
         .toList()
-      ..sort();
+      ..sort(); // Alfabetik sıralar (Bu "En Eski" düzenidir)
 
     final List<DesignItem> items = [];
     for (int i = 0; i < paths.length; i++) {
       final p = paths[i];
       final fileName = p.split('/').last.toLowerCase();
       String diff = "Kolay";
-      if (fileName.contains("medium") || fileName.contains("orta"))
+      if (fileName.contains("medium") || fileName.contains("orta")) {
         diff = "Orta";
-      else if (fileName.contains("hard") || fileName.contains("zor"))
+      } else if (fileName.contains("hard") || fileName.contains("zor")) {
         diff = "Zor";
+      }
 
       items.add(DesignItem(
         path: p,
@@ -225,21 +167,36 @@ class _TemplatesScreenState extends State<TemplatesScreen>
     _all = items;
   }
 
+  // ✅ KATEGORİ VE SIRALAMA UYGULAYICI FONKSİYON
   void _apply() {
-    final q = _search.text.trim().toLowerCase();
     setState(() {
+      // 1. Önce Tab (Zorluk) Filtresini Uygula
       _shown = _all.where((d) {
-        final matchesSearch = d.path.split('/').last.toLowerCase().contains(q);
-        final matchesTab =
-            _selectedTab == "Hepsi" || d.difficulty == _selectedTab;
-        return matchesSearch && matchesTab;
+        return _selectedTab == "Hepsi" || d.difficulty == _selectedTab;
       }).toList();
+
+      // 2. Sonra Seçilen Sıralamaya Göre Diz
+      if (_selectedSort == "En Yeni") {
+        // Sondan başa (Z->A) sıralar
+        _shown.sort((a, b) => b.path.compareTo(a.path));
+      } else if (_selectedSort == "En Eski") {
+        // Baştan sona (A->Z) sıralar
+        _shown.sort((a, b) => a.path.compareTo(b.path));
+      } else if (_selectedSort == "En Popüler") {
+        // Beğeni sayısına göre yüksekten düşüğe sıralar
+        _shown.sort((a, b) => b.likes.compareTo(a.likes));
+      }
     });
   }
 
   void _onBottomTap(int i) {
     HapticFeedback.lightImpact();
-    if (i == 0) return;
+
+    if (i == 0) {
+      Navigator.pop(context);
+      return;
+    }
+
     if (i == 1) {
       Navigator.push(
           context,
@@ -323,48 +280,56 @@ class _TemplatesScreenState extends State<TemplatesScreen>
             )
           : Column(
               children: [
+                // ✅ YENİ SIRALAMA (FİLTRE) ÇUBUĞU
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(25, 0, 25, 10),
-                  child: Column(
+                  padding: const EdgeInsets.fromLTRB(20, 5, 20, 15),
+                  child: Row(
                     children: [
-                      Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text("Seviye $_userLevel",
-                                style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 14,
-                                    color: Colors.black)),
-                            Text("$_currentXp / $_requiredXp XP",
-                                style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12,
-                                    color: Colors.grey)),
-                          ]),
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: LinearProgressIndicator(
-                              value: _currentXp / _requiredXp,
-                              backgroundColor: Colors.grey.shade200,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  widget.category.color),
-                              minHeight: 8)),
+                      Icon(Icons.sort_rounded,
+                          color: widget.category.color, size: 24),
+                      const SizedBox(width: 8),
+                      Text("Sırala:",
+                          style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: Colors.grey.shade700)),
+                      const Spacer(),
+                      _neumorphic(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          height: 42,
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isDense: true,
+                              value: _selectedSort,
+                              icon: Icon(Icons.keyboard_arrow_down_rounded,
+                                  color: widget.category.color),
+                              style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                  color: const Color(0xFF1E293B)),
+                              items: _sortOptions.map((String value) {
+                                return DropdownMenuItem<String>(
+                                  value: value,
+                                  child: Text(value),
+                                );
+                              }).toList(),
+                              onChanged: (newValue) {
+                                if (newValue != null) {
+                                  HapticFeedback.selectionClick();
+                                  setState(() => _selectedSort = newValue);
+                                  _apply(); // Seçim değiştiğinde listeyi günceller
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 5, 20, 15),
-                    child: _neumorphic(
-                        child: TextField(
-                            controller: _search,
-                            decoration: InputDecoration(
-                                hintText: "Şablonlarda ara...",
-                                prefixIcon: Icon(Icons.search_rounded,
-                                    color: widget.category.color),
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 15))))),
+
+                // ZORLUK SEVİYELERİ
                 Container(
                   height: 45,
                   margin: const EdgeInsets.only(bottom: 20),
@@ -414,6 +379,7 @@ class _TemplatesScreenState extends State<TemplatesScreen>
                                                 fontSize: 13))))));
                       }),
                 ),
+
                 Expanded(
                   child: GridView.builder(
                     physics: const BouncingScrollPhysics(),
@@ -461,7 +427,6 @@ class _TemplatesScreenState extends State<TemplatesScreen>
                                           .then((_) => _init());
                                       return;
                                     }
-                                    final DateTime startTime = DateTime.now();
 
                                     if (Platform.isIOS) {
                                       Navigator.push(
@@ -471,15 +436,11 @@ class _TemplatesScreenState extends State<TemplatesScreen>
                                             imagePath: item.path,
                                           ),
                                         ),
-                                      ).then((_) {
-                                        final DateTime endTime = DateTime.now();
-                                        if (endTime
-                                                .difference(startTime)
-                                                .inSeconds >=
-                                            10) _addXp();
-                                      });
+                                      );
                                     } else {
                                       String glbPath = item.path
+                                          .replaceAll('assets/templates/',
+                                              'assets/models/')
                                           .replaceAll('.png', '.glb')
                                           .replaceAll('.jpg', '.glb')
                                           .replaceAll('.webp', '.glb');
@@ -491,13 +452,7 @@ class _TemplatesScreenState extends State<TemplatesScreen>
                                             glbAssetPath: glbPath,
                                           ),
                                         ),
-                                      ).then((_) {
-                                        final DateTime endTime = DateTime.now();
-                                        if (endTime
-                                                .difference(startTime)
-                                                .inSeconds >=
-                                            10) _addXp();
-                                      });
+                                      );
                                     }
                                   },
                                   child: Stack(

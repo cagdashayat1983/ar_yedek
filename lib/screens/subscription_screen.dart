@@ -1,9 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/home_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:camera/camera.dart'; // ✅ Eklendi
+import 'categories_screen.dart'; // ✅ Eklendi
 
 class SubscriptionScreen extends StatelessWidget {
-  const SubscriptionScreen({super.key});
+  // ✅ Akıllı yönlendirme için eklendi
+  final bool isFirstOffer;
+  final List<CameraDescription>? cameras;
+
+  const SubscriptionScreen({
+    super.key,
+    this.isFirstOffer = false,
+    this.cameras,
+  });
 
   Future<void> _goPro(BuildContext context) async {
     // Pro üyeliği aktif et ve kaydet
@@ -17,7 +28,25 @@ class SubscriptionScreen extends StatelessWidget {
           backgroundColor: Colors.amber,
         ),
       );
-      Navigator.pop(context); // Sayfayı kapat
+
+      // ✅ BAŞARILI SATIN ALMADAN SONRA YÖNLENDİRME
+      _closeOrGoHome(context);
+    }
+  }
+
+  // ✅ ÇARPIYA BASINCA VEYA SATIN ALINCA ÇALIŞACAK MANTIK
+  void _closeOrGoHome(BuildContext context) {
+    if (isFirstOffer && cameras != null) {
+      // Eğer loginden geldiyse ve çarpıya bastıysa (veya aldıysa) ana sayfaya geç
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(cameras: cameras!),
+        ),
+      );
+    } else {
+      // Zaten uygulamanın içindeyse sadece bu sayfayı kapat
+      Navigator.pop(context);
     }
   }
 
@@ -45,12 +74,12 @@ class SubscriptionScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Kapat Butonu
+                // ✅ AKILLI KAPAT BUTONU
                 Align(
                   alignment: Alignment.topLeft,
                   child: IconButton(
                     icon: const Icon(Icons.close_rounded, size: 30),
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => _closeOrGoHome(context),
                   ),
                 ),
 

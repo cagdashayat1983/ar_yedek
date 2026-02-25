@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'progress_roadmap_screen.dart';
 import 'history_screen.dart';
 import 'subscription_screen.dart';
+import 'favorites_screen.dart'; // ✅ BEĞENDİKLERİM SAYFASI EKLENDİ
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -43,14 +44,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  // ✅ RESİM SEÇME VE KAYDETME (Düzeltildi)
+  // ✅ RESİM SEÇME VE KAYDETME
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
     if (image != null) {
       final directory = await getApplicationDocumentsDirectory();
-      // 'ms' hatası yerine tam adı kullanıldı
       final String fileName =
           'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final File savedImage =
@@ -82,11 +82,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 16),
                 _buildPremiumButton(),
                 const SizedBox(height: 25),
+
                 _buildMenuTitle("ETKİNLİKLER"),
+
+                // ✅ YENİ EKLENEN BEĞENDİKLERİM BUTONU
+                _menuItem(Icons.favorite_rounded, "Beğendiklerim", () {
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const FavoritesScreen()));
+                }),
+
                 _menuItem(Icons.history_edu_rounded, "Çizim Geçmişim", () {
                   Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const HistoryScreen()));
                 }),
+
                 _buildMenuTitle("DESTEK"),
                 _menuItem(Icons.help_outline_rounded, "Yardım Merkezi", () {}),
                 _menuItem(Icons.info_outline_rounded, "Hakkımızda", () {}),
@@ -105,7 +116,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       pinned: true,
       backgroundColor: const Color(0xFF0F172A),
       elevation: 0,
-      // Yazının okunması için özel başlık tasarımı
       title: Text(
         "PROFİLİM",
         style: GoogleFonts.poppins(
@@ -129,7 +139,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const SizedBox(height: 50),
-              // ✅ PROFİL RESMİ ALANI
               GestureDetector(
                 onTap: _pickImage,
                 child: Stack(
@@ -178,7 +187,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Önceki tasarımlardan gelen kartlar aynen korundu...
   Widget _buildProgressCard() {
     double progress = (_userXp % 2000) / 2000;
     return GestureDetector(

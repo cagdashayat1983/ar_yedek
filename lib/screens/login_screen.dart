@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'categories_screen.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'dart:ui';
+import 'package:shared_preferences/shared_preferences.dart'; // ✅ Eklendi
+import 'subscription_screen.dart'; // ✅ Eklendi
+import 'categories_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  // ✅ 1. ADIM: Dışarıdan gelen kameraları kabul ediyoruz
   final List<CameraDescription> cameras;
 
   const LoginScreen({super.key, required this.cameras});
@@ -21,8 +21,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _obscure = true;
   bool _loading = false;
-  // ignore: unused_field
-  bool _rememberMe = true;
 
   @override
   void dispose() {
@@ -31,7 +29,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // ✅ 2. ADIM: Uygulamaya Geçiş Fonksiyonu Güncellendi
   Future<void> _goToApp() async {
     setState(() => _loading = true);
     try {
@@ -40,19 +37,31 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!status.isGranted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Kamera izni gerekli. 📸")),
+            const SnackBar(
+              content: Text("Kamera izni gerekli. 📸"),
+              backgroundColor: Colors.amber,
+            ),
           );
         }
         return;
       }
 
+      // ✅ KULLANICIYI GİRİŞ YAPTI OLARAK İŞARETLE
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_logged_in', true);
+
       if (!mounted) return;
 
-      // ✅ Kamerayı tekrar taramak yerine main'den gelen 'widget.cameras' kullanılıyor
+      // ✅ DİREKT ANA SAYFAYA DEĞİL, İLK SATIŞ TEKLİFİNE (SUBSCRIPTION) YOLLA
+      // Giderken de "Bu ilk açılış teklifi, çarpıya basarsan ana sayfaya git" demek için
+      // isFirstOffer parametresini true yolluyoruz.
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => CategoriesScreen(cameras: widget.cameras),
+          builder: (_) => SubscriptionScreen(
+            cameras: widget.cameras,
+            isFirstOffer: true, // İlk teklif olduğunu belirtiyoruz
+          ),
         ),
       );
     } catch (e) {
@@ -68,170 +77,237 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const Color bgColor = Color(0xFFF0F2F5);
-
     return Scaffold(
-      backgroundColor: bgColor,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // --- LOGO / ICON ---
-                _NeumorphicContainer(
-                  padding: const EdgeInsets.all(16),
-                  borderRadius: 20,
-                  child: Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [
-                          AppColors.pink,
-                          AppColors.lilac,
-                          AppColors.blue
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(Icons.auto_awesome_rounded,
-                        color: Colors.white, size: 30),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  "Hoş Geldin!",
-                  style: GoogleFonts.poppins(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF1E293B),
-                  ),
-                ),
-                Text(
-                  "Hayatify ile çizmeye hazır mısın?",
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 40),
+      backgroundColor: Colors.white,
+      body: Stack(
+        children: [
+          // --- ARKA PLAN SÜSLEMELERİ ---
+          Positioned(
+            top: -100,
+            right: -80,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.amber.withOpacity(0.08),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -50,
+            left: -80,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.orange.withOpacity(0.05),
+              ),
+            ),
+          ),
 
-                // --- GİRİŞ KARTI ---
-                _NeumorphicContainer(
-                  padding: const EdgeInsets.all(24),
-                  borderRadius: 30,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _inputLabel("Email Adresi"),
-                      _SoftInput(
-                        controller: _email,
-                        hint: "email@adres.com",
-                        prefix: Icons.alternate_email_rounded,
+          // --- ANA İÇERİK ---
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // LOGO / ICON
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.15),
+                        shape: BoxShape.circle,
                       ),
-                      const SizedBox(height: 20),
-                      _inputLabel("Şifre"),
-                      _SoftInput(
-                        controller: _pass,
-                        hint: "••••••••",
-                        prefix: Icons.lock_outline_rounded,
-                        obscureText: _obscure,
-                        suffix: IconButton(
-                          icon: Icon(
-                              _obscure
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
-                              color: Colors.grey),
-                          onPressed: () => setState(() => _obscure = !_obscure),
+                      child: const Icon(Icons.auto_awesome_rounded,
+                          size: 50, color: Colors.amber),
+                    ),
+                    const SizedBox(height: 24),
+
+                    Text(
+                      "Hoş Geldin!",
+                      style: GoogleFonts.poppins(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      "Hayatify ile çizmeye hazır mısın?",
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+
+                    // --- GİRİŞ FORMU ---
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _inputLabel("Email Adresi"),
+                        _CleanInput(
+                          controller: _email,
+                          hint: "email@adres.com",
+                          prefix: Icons.alternate_email_rounded,
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
+                        const SizedBox(height: 20),
+
+                        _inputLabel("Şifre"),
+                        _CleanInput(
+                          controller: _pass,
+                          hint: "••••••••",
+                          prefix: Icons.lock_outline_rounded,
+                          obscureText: _obscure,
+                          suffix: IconButton(
+                            icon: Icon(
+                                _obscure
+                                    ? Icons.visibility_off_rounded
+                                    : Icons.visibility_rounded,
+                                color: Colors.grey.shade400),
+                            onPressed: () =>
+                                setState(() => _obscure = !_obscure),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
                             onPressed: () {},
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
                             child: Text(
-                              "Şifremi Unuttum?",
+                              "Şifremi Unuttum",
                               style: GoogleFonts.poppins(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.lilac.withBlue(150),
+                                color: Colors.orange.shade400,
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
+                        ),
+                        const SizedBox(height: 30),
 
-                      // GİRİŞ BUTONU
-                      _GradientButton(
-                        onPressed: _loading ? null : _goToApp,
-                        loading: _loading,
-                        text: "Giriş Yap",
-                      ),
-                    ],
-                  ),
-                ),
+                        // GİRİŞ YAP BUTONU
+                        GestureDetector(
+                          onTap: _loading ? null : _goToApp,
+                          child: Container(
+                            height: 60,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFFFA726), Color(0xFFFF7043)],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.orange.withOpacity(0.4),
+                                  blurRadius: 15,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: _loading
+                                  ? const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                          color: Colors.white, strokeWidth: 3))
+                                  : Text(
+                                      "GİRİŞ YAP",
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
 
-                const SizedBox(height: 40),
+                    const SizedBox(height: 40),
 
-                // --- SOSYAL GİRİŞ ---
-                Text(
-                  "Veya şunlarla devam et",
-                  style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: Colors.grey,
-                      fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _SocialBtn(
-                        icon: Icons.g_mobiledata_rounded,
-                        color: Colors.redAccent,
-                        onTap: _goToApp),
-                    const SizedBox(width: 20),
-                    _SocialBtn(
-                        icon: Icons.apple_rounded,
-                        color: Colors.black,
-                        onTap: _goToApp),
-                    const SizedBox(width: 20),
-                    _SocialBtn(
-                        icon: Icons.facebook_rounded,
-                        color: const Color(0xFF1877F2),
-                        onTap: _goToApp),
-                  ],
-                ),
+                    // --- SOSYAL GİRİŞ ---
+                    Row(
+                      children: [
+                        Expanded(child: Divider(color: Colors.grey.shade200)),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 15),
+                          child: Text(
+                            "Veya",
+                            style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                color: Colors.grey.shade500,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        Expanded(child: Divider(color: Colors.grey.shade200)),
+                      ],
+                    ),
+                    const SizedBox(height: 25),
 
-                const SizedBox(height: 40),
-                // KAYIT OL LİNKİ
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text("Hesabın yok mu? ",
-                        style: GoogleFonts.poppins(
-                            fontSize: 13, color: Colors.grey.shade600)),
-                    GestureDetector(
-                      onTap: () {},
-                      child: Text(
-                        "Kayıt Ol",
-                        style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF1E293B)),
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _SocialBtn(
+                            icon: Icons.g_mobiledata_rounded,
+                            color: Colors.redAccent,
+                            onTap: _goToApp),
+                        const SizedBox(width: 20),
+                        _SocialBtn(
+                            icon: Icons.apple_rounded,
+                            color: Colors.black,
+                            onTap: _goToApp),
+                        const SizedBox(width: 20),
+                        _SocialBtn(
+                            icon: Icons.facebook_rounded,
+                            color: const Color(0xFF1877F2),
+                            onTap: _goToApp),
+                      ],
+                    ),
+
+                    const SizedBox(height: 40),
+
+                    // KAYIT OL LİNKİ
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text("Hesabın yok mu? ",
+                            style: GoogleFonts.poppins(
+                                fontSize: 13, color: Colors.grey.shade600)),
+                        GestureDetector(
+                          onTap: () {},
+                          child: Text(
+                            "Kayıt Ol",
+                            style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.orange.shade500),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -243,127 +319,55 @@ class _LoginScreenState extends State<LoginScreen> {
         text,
         style: GoogleFonts.poppins(
             fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF1E293B)),
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF334155)),
       ),
     );
   }
 }
 
-// --- YARDIMCI BİLEŞENLER ---
-
-class _NeumorphicContainer extends StatelessWidget {
-  final Widget child;
-  final double borderRadius;
-  final EdgeInsets padding;
-
-  const _NeumorphicContainer(
-      {required this.child,
-      this.borderRadius = 20,
-      this.padding = EdgeInsets.zero});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0F2F5),
-        borderRadius: BorderRadius.circular(borderRadius),
-        boxShadow: [
-          const BoxShadow(
-              color: Colors.white, offset: Offset(-6, -6), blurRadius: 12),
-          BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              offset: const Offset(6, 6),
-              blurRadius: 12),
-        ],
-      ),
-      child: child,
-    );
-  }
-}
-
-class _SoftInput extends StatelessWidget {
+class _CleanInput extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
   final IconData prefix;
   final bool obscureText;
   final Widget? suffix;
 
-  const _SoftInput(
-      {required this.controller,
-      required this.hint,
-      required this.prefix,
-      this.obscureText = false,
-      this.suffix});
+  const _CleanInput({
+    required this.controller,
+    required this.hint,
+    required this.prefix,
+    this.obscureText = false,
+    this.suffix,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFE6E9EE),
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200, width: 1.5),
       ),
       child: TextField(
         controller: controller,
         obscureText: obscureText,
-        style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600),
+        style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF1E293B)),
         decoration: InputDecoration(
           hintText: hint,
-          prefixIcon: Icon(prefix, color: Colors.grey.shade500, size: 20),
+          hintStyle: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey.shade400),
+          prefixIcon: Icon(prefix, color: Colors.grey.shade400, size: 22),
           suffixIcon: suffix,
           border: InputBorder.none,
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
-      ),
-    );
-  }
-}
-
-class _GradientButton extends StatelessWidget {
-  final VoidCallback? onPressed;
-  final String text;
-  final bool loading;
-
-  const _GradientButton(
-      {this.onPressed, required this.text, this.loading = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 55,
-      decoration: BoxDecoration(
-        gradient:
-            const LinearGradient(colors: [AppColors.pink, AppColors.lilac]),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-              color: AppColors.pink.withOpacity(0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 6)),
-        ],
-      ),
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-        child: loading
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2))
-            : Text(text,
-                style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white)),
       ),
     );
   }
@@ -374,24 +378,32 @@ class _SocialBtn extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
 
-  const _SocialBtn(
-      {required this.icon, required this.color, required this.onTap});
+  const _SocialBtn({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: _NeumorphicContainer(
-        borderRadius: 50,
+      child: Container(
         padding: const EdgeInsets.all(12),
-        child: Icon(icon, color: color, size: 26),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.grey.shade200, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ],
+        ),
+        child: Icon(icon, color: color, size: 28),
       ),
     );
   }
-}
-
-class AppColors {
-  static const lilac = Color(0xFFE8C0FC);
-  static const blue = Color(0xFFA8DEFA);
-  static const pink = Color(0xFFFF99C8);
 }
