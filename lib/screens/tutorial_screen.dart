@@ -88,20 +88,27 @@ class _TutorialScreenState extends State<TutorialScreen>
     }
   }
 
-  // 🎤 Dinlemeye Başla ve Kelimeleri Yakala
+  // 🎤 Dinlemeye Başla ve Kelimeleri Yakala (Şiveli Versiyon)
   void _startListening() {
     _speech.listen(
       onResult: (result) {
         String spokenWords = result.recognizedWords.toLowerCase();
 
-        // Komutlar arası en az 1.5 saniye bekle (Hızlı hızlı atlamasın diye)
+        // Komutlar arası en az 1.5 saniye bekle
         if (DateTime.now().difference(_lastCommandTime).inMilliseconds > 1500) {
-          if (spokenWords.contains("ileri") || spokenWords.contains("next")) {
+          // İLERİ KOMUTLARI
+          if (spokenWords.contains("ileri") ||
+              spokenWords.contains("next") ||
+              spokenWords.contains("geç")) {
             _nextStep();
             _lastCommandTime = DateTime.now();
             _resetListening(); // 🧹 HAFIZAYI TEMİZLE VE YENİDEN DİNLE
-          } else if (spokenWords.contains("geri") ||
-              spokenWords.contains("back")) {
+          }
+          // GERİ KOMUTLARI (Back kelimesinin olası duyuluşları)
+          else if (spokenWords.contains("geri") ||
+              spokenWords.contains("back") ||
+              spokenWords.contains("bek") ||
+              spokenWords.contains("dön")) {
             _prevStep();
             _lastCommandTime = DateTime.now();
             _resetListening(); // 🧹 HAFIZAYI TEMİZLE VE YENİDEN DİNLE
