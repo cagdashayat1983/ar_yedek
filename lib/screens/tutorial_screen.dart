@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:confetti/confetti.dart'; // 🎉 Konfeti
+import 'package:speech_to_text/speech_to_text.dart' as stt; // 🎤 Sesli Komut
 import 'dart:math' as math;
-import 'dart:ui'; // ✅ Blur efekti için bu şart
+import 'dart:ui';
 
 class TutorialScreen extends StatefulWidget {
   final String title;
@@ -26,7 +28,6 @@ class TutorialScreen extends StatefulWidget {
   State<TutorialScreen> createState() => _TutorialScreenState();
 }
 
-// ✅ Animasyon yeteneği için with TickerProviderStateMixin eklendi
 class _TutorialScreenState extends State<TutorialScreen>
     with TickerProviderStateMixin {
   late int _currentStep;
@@ -40,10 +41,16 @@ class _TutorialScreenState extends State<TutorialScreen>
   bool isFlipped = false;
   int _gridMode = 0;
 
-  // --- 🪄 YENİ: Lazer ve Kutlama Değişkenleri ---
+  // --- 🪄 EFEKT VE SES DEĞİŞKENLERİ ---
   late AnimationController _scannerController;
+  late ConfettiController _confettiController;
   bool _showCelebration = false;
   int _earnedTotalXp = 0;
+
+  // --- 🎤 SESLİ KOMUT DEĞİŞKENLERİ ---
+  late stt.SpeechToText _speech;
+  bool _isListening = false;
+  DateTime _lastCommandTime = DateTime.now(); // Üst üste atlamayı önlemek için
 
   @override
   void initState() {
@@ -52,15 +59,60 @@ class _TutorialScreenState extends State<TutorialScreen>
     _pageController = PageController(initialPage: widget.initialStep);
     initializeCamera();
 
-    // ⚡ Lazer Animasyonunu Hazırla (1.5 Saniye)
+    // ⚡ Lazer Animasyonu
     _scannerController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
-    _startScanner(); // Sayfa açıldığında lazer bir kere geçsin
+    _startScanner();
+
+    // 🎉 Konfeti Ayarı
+    _confettiController =
+        ConfettiController(duration: const Duration(seconds: 3));
+
+    // 🎤 Sesli Komut Kurulumu
+    _speech = stt.SpeechToText();
+    _initSpeech();
   }
 
-  // 🪄 Lazer tetikleyici fonksiyon
+  // 🎤 Ses Asistanını Başlat
+  void _initSpeech() async {
+    bool available = await _speech.initialize(
+      onStatus: (status) => debugPrint('Ses Durumu: $status'),
+      onError: (errorNotification) =>
+          debugPrint('Ses Hatası: $errorNotification'),
+    );
+    if (available && mounted) {
+      setState(() => _isListening = true);
+      _startListening();
+    }
+  }
+
+  // 🎤 Dinlemeye Başla ve Kelimeleri Yakala
+  void _startListening() {
+    _speech.listen(
+      onResult: (result) {
+        String spokenWords = result.recognizedWords.toLowerCase();
+
+        // Komutlar arası en az 1.5 saniye bekle (Hızlı hızlı atlamasın diye)
+        if (DateTime.now().difference(_lastCommandTime).inMilliseconds > 1500) {
+          if (spokenWords.contains("ileri") || spokenWords.contains("next")) {
+            _nextStep();
+            _lastCommandTime = DateTime.now();
+          } else if (spokenWords.contains("geri") ||
+              spokenWords.contains("back")) {
+            _prevStep();
+            _lastCommandTime = DateTime.now();
+          }
+        }
+      },
+      localeId: 'tr_TR', // Türkçe komutlara öncelik ver
+      cancelOnError: false,
+      partialResults: true,
+      listenMode: stt.ListenMode.dictation,
+    );
+  }
+
   void _startScanner() {
     _scannerController.reset();
     _scannerController.forward();
@@ -81,9 +133,11 @@ class _TutorialScreenState extends State<TutorialScreen>
 
   @override
   void dispose() {
+    _speech.stop(); // 🎤 Asistanı durdur
     controller?.dispose();
     _pageController.dispose();
-    _scannerController.dispose(); // ✅ Animasyonu hafızadan sil
+    _scannerController.dispose();
+    _confettiController.dispose();
     super.dispose();
   }
 
@@ -94,41 +148,32 @@ class _TutorialScreenState extends State<TutorialScreen>
     }
   }
 
-  // ✅ GÜNCELLENMİŞ BİTİRME FONKSİYONU
   Future<void> _finishTutorial() async {
-    HapticFeedback.heavyImpact(); // Daha güçlü bir bitiş hissiyatı
+    HapticFeedback.heavyImpact();
     final prefs = await SharedPreferences.getInstance();
 
-    // 1. Kilit Açma Verisi
     await prefs.setBool('completed_${widget.title}', true);
-
-    // 2. Çizim Geçmişine Kaydet
     final List<String> history = prefs.getStringList('drawing_history') ?? [];
     if (!history.contains(widget.title)) {
       history.add(widget.title);
       await prefs.setStringList('drawing_history', history);
     }
-
-    // 3. İlerlemeyi Sıfırla
     await prefs.setInt('progress_${widget.title}', 0);
 
-    // 4. XP Ekle ve Değişkene Ata
     int currentXp = prefs.getInt('total_xp') ?? 0;
     _earnedTotalXp = currentXp + 100;
     await prefs.setInt('total_xp', _earnedTotalXp);
 
-    // 5. Yeni Buzlu Cam Kutlama Ekranını Göster
     if (mounted) {
-      setState(() {
-        _showCelebration = true;
-      });
+      setState(() => _showCelebration = true);
+      _confettiController.play(); // 🎉 KONFETİYİ PATLAT!
     }
   }
 
   void _nextStep() {
     HapticFeedback.lightImpact();
     if (_currentStep < widget.imagePaths.length - 1) {
-      _startScanner(); // ✅ İleri basınca lazer efekti çalışsın
+      _startScanner();
       _pageController.nextPage(
           duration: const Duration(milliseconds: 300), curve: Curves.ease);
     } else {
@@ -139,7 +184,7 @@ class _TutorialScreenState extends State<TutorialScreen>
   void _prevStep() {
     HapticFeedback.lightImpact();
     if (_currentStep > 0) {
-      _startScanner(); // ✅ Geri basınca da lazer efekti çalışsın
+      _startScanner();
       _pageController.previousPage(
           duration: const Duration(milliseconds: 300), curve: Curves.ease);
     }
@@ -166,51 +211,99 @@ class _TutorialScreenState extends State<TutorialScreen>
       extendBodyBehindAppBar: true,
       appBar: _buildAppBar(),
       body: Stack(
+        alignment: Alignment.center, // Konfeti tam ortadan çıksın diye
         children: [
-          // 1. KAMERA KATMANI
+          // 1. KAMERA
           if (isCameraReady)
             SizedBox.expand(child: CameraPreview(controller!))
           else
             const Center(child: CircularProgressIndicator(color: Colors.white)),
 
-          // 2. ✅ YENİ: LAZER SCANNER EFEKTİ
+          // 2. 🌟 YENİ: GERÇEK IŞIN KILICI SCANNER
           _buildScannerEffect(),
 
-          // 3. AR ÇİZİM REHBERİ (Ghost, Grid, Ayna vb.)
+          // 3. AR ÇİZİM REHBERİ
           _buildAROverlay(),
 
           // 4. ALT KONTROLLER
           _buildBottomControls(),
 
-          // 5. ✅ YENİ: BİTİŞ KUTLAMASI (En üst katman)
+          // 5. KUTLAMA VE KONFETİ
           if (_showCelebration) _buildCelebrationOverlay(),
+
+          // 🎉 KONFETİ WIDGET'I (En üstte patlasın)
+          ConfettiWidget(
+            confettiController: _confettiController,
+            blastDirectionality:
+                BlastDirectionality.explosive, // Her yöne patlar
+            shouldLoop: false,
+            colors: const [
+              Colors.green,
+              Colors.blue,
+              Colors.pink,
+              Colors.orange,
+              Colors.purple
+            ],
+            createParticlePath: drawStar, // Yıldız şeklinde konfetiler
+          ),
         ],
       ),
     );
   }
 
-  // --- 🪄 LAZER SCANNER WIDGET'I ---
+  // 🎉 Konfetileri Yıldız Şeklinde Kestik
+  Path drawStar(Size size) {
+    double degToRad(double deg) => deg * (math.pi / 180.0);
+    const numberOfPoints = 5;
+    final halfWidth = size.width / 2;
+    final externalRadius = halfWidth;
+    final internalRadius = halfWidth / 2.5;
+    final degreesPerStep = degToRad(360 / numberOfPoints);
+    final halfDegreesPerStep = degreesPerStep / 2;
+    final path = Path();
+    final fullAngle = degToRad(360);
+    path.moveTo(size.width, halfWidth);
+    for (double step = 0; step < fullAngle; step += degreesPerStep) {
+      path.lineTo(halfWidth + externalRadius * math.cos(step),
+          halfWidth + externalRadius * math.sin(step));
+      path.lineTo(
+          halfWidth + internalRadius * math.cos(step + halfDegreesPerStep),
+          halfWidth + internalRadius * math.sin(step + halfDegreesPerStep));
+    }
+    path.close();
+    return path;
+  }
+
+  // --- 🌟 GERÇEK IŞIN KILICI EFEKTİ ---
   Widget _buildScannerEffect() {
     return AnimatedBuilder(
       animation: _scannerController,
       builder: (context, child) {
-        double screenWidth = MediaQuery.of(context).size.width;
+        double screenHeight = MediaQuery.of(context).size.height;
         return Positioned(
-          left: screenWidth * _scannerController.value - 100,
-          top: 0,
-          bottom: 0,
+          top: screenHeight * _scannerController.value -
+              100, // Yukarıdan aşağı iner
+          left: 0,
+          right: 0,
           child: Opacity(
-            opacity: (1 - _scannerController.value) * 0.6,
+            opacity: (1 - _scannerController.value),
             child: Container(
-              width: 80,
+              height: 4, // Çizgi inceldi (Işın kılıcı çekirdeği)
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.blueAccent.withOpacity(0.0),
-                    Colors.blueAccent.withOpacity(0.5),
-                    Colors.blueAccent.withOpacity(0.0),
-                  ],
-                ),
+                color: Colors.white, // Bembeyaz çekirdek
+                boxShadow: [
+                  BoxShadow(
+                    color:
+                        Colors.cyanAccent.withOpacity(0.8), // Neon Mavi Parlama
+                    blurRadius: 20,
+                    spreadRadius: 10,
+                  ),
+                  BoxShadow(
+                    color: Colors.blueAccent.withOpacity(0.5), // Geniş Parlama
+                    blurRadius: 40,
+                    spreadRadius: 20,
+                  ),
+                ],
               ),
             ),
           ),
@@ -231,28 +324,20 @@ class _TutorialScreenState extends State<TutorialScreen>
             children: [
               const Icon(Icons.stars_rounded, color: Colors.amber, size: 100),
               const SizedBox(height: 16),
-              Text(
-                "TEBRİKLER!",
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 32,
-                ),
-              ),
+              Text("TEBRİKLER!",
+                  style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 32)),
               const SizedBox(height: 8),
-              Text(
-                "+100 XP Kazandın",
-                style: GoogleFonts.poppins(
-                  color: Colors.greenAccent,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 20,
-                ),
-              ),
+              Text("+100 XP Kazandın",
+                  style: GoogleFonts.poppins(
+                      color: Colors.greenAccent,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 20)),
               const SizedBox(height: 12),
-              Text(
-                "Toplam Puanın: $_earnedTotalXp",
-                style: const TextStyle(color: Colors.white70),
-              ),
+              Text("Toplam Puanın: $_earnedTotalXp",
+                  style: const TextStyle(color: Colors.white70)),
               const SizedBox(height: 40),
               SizedBox(
                 width: 200,
@@ -265,15 +350,11 @@ class _TutorialScreenState extends State<TutorialScreen>
                         borderRadius: BorderRadius.circular(30)),
                   ),
                   onPressed: () {
-                    Navigator.pop(context); // Sayfayı kapatıp menüye döner
+                    Navigator.pop(context);
                   },
-                  child: Text(
-                    "HARİKA!",
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
+                  child: Text("HARİKA!",
+                      style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
               ),
             ],
@@ -285,12 +366,21 @@ class _TutorialScreenState extends State<TutorialScreen>
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      title: Text(widget.title.toUpperCase(),
-          style: GoogleFonts.poppins(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
-              fontSize: 16,
-              letterSpacing: 1.2)),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(widget.title.toUpperCase(),
+              style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                  letterSpacing: 1.2)),
+          const SizedBox(width: 8),
+          // 🎤 Mikrofon dinleniyorsa yanıp sönen ikon
+          if (_isListening)
+            const Icon(Icons.mic_rounded, color: Colors.redAccent, size: 18),
+        ],
+      ),
       backgroundColor: Colors.black.withOpacity(0.4),
       elevation: 0,
       centerTitle: true,
@@ -369,11 +459,10 @@ class _TutorialScreenState extends State<TutorialScreen>
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 30),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [Colors.black.withOpacity(0.9), Colors.transparent]),
-        ),
+            gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [Colors.black.withOpacity(0.9), Colors.transparent])),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -469,14 +558,14 @@ class _TutorialScreenState extends State<TutorialScreen>
       icon: Icon(icon, size: 18),
       label: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
       style: ElevatedButton.styleFrom(
-        backgroundColor: isPrimary
-            ? (label == "BİTİR" ? Colors.green : Colors.blueAccent)
-            : Colors.white10,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        elevation: 0,
-      ),
+          backgroundColor: isPrimary
+              ? (label == "BİTİR" ? Colors.green : Colors.blueAccent)
+              : Colors.white10,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 15),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          elevation: 0),
     );
   }
 
@@ -492,17 +581,15 @@ class _TutorialScreenState extends State<TutorialScreen>
         decoration: BoxDecoration(
             color: isActive ? Colors.blueAccent : Colors.white12,
             borderRadius: BorderRadius.circular(12)),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: Colors.white),
-            const SizedBox(width: 8),
-            Text(label,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ),
+        child: Row(children: [
+          Icon(icon, size: 18, color: Colors.white),
+          const SizedBox(width: 8),
+          Text(label,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold))
+        ]),
       ),
     );
   }

@@ -39,10 +39,13 @@
     <string>AR görüntülerini galerinize kaydedebilmek için izin gereklidir.</string>
     
     <key>NSMicrophoneUsageDescription</key>
-    <string>AR deneyimi sırasında ses kaydı gerekebileceği için mikrofon erişimi gereklidir.</string>
+    <string>AR deneyimi sırasında ses kaydı yapabilmeniz ve sayfaları sesli komutla değiştirebilmeniz için mikrofon erişimi gereklidir.</string>
     
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>AR objelerinin doğru yerleşimi ve zemin algılama için konum izni gereklidir.</string>
+
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Çizim yaparken sayfaları sesle değiştirebilmeniz için ses tanıma iznine ihtiyacımız var.</string>
 
     <key>io.flutter.embedded_views_preview</key>
     <true/>
