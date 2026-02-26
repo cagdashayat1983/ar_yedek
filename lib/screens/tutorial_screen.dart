@@ -1,9 +1,12 @@
+// lib/screens/tutorial_screen.dart
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
+import 'dart:ui'; // ✅ Blur efekti için bu şart
 
 class TutorialScreen extends StatefulWidget {
   final String title;
@@ -23,7 +26,9 @@ class TutorialScreen extends StatefulWidget {
   State<TutorialScreen> createState() => _TutorialScreenState();
 }
 
-class _TutorialScreenState extends State<TutorialScreen> {
+// ✅ Animasyon yeteneği için with TickerProviderStateMixin eklendi
+class _TutorialScreenState extends State<TutorialScreen>
+    with TickerProviderStateMixin {
   late int _currentStep;
   late PageController _pageController;
   CameraController? controller;
@@ -35,12 +40,30 @@ class _TutorialScreenState extends State<TutorialScreen> {
   bool isFlipped = false;
   int _gridMode = 0;
 
+  // --- 🪄 YENİ: Lazer ve Kutlama Değişkenleri ---
+  late AnimationController _scannerController;
+  bool _showCelebration = false;
+  int _earnedTotalXp = 0;
+
   @override
   void initState() {
     super.initState();
     _currentStep = widget.initialStep;
     _pageController = PageController(initialPage: widget.initialStep);
     initializeCamera();
+
+    // ⚡ Lazer Animasyonunu Hazırla (1.5 Saniye)
+    _scannerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    _startScanner(); // Sayfa açıldığında lazer bir kere geçsin
+  }
+
+  // 🪄 Lazer tetikleyici fonksiyon
+  void _startScanner() {
+    _scannerController.reset();
+    _scannerController.forward();
   }
 
   Future<void> initializeCamera() async {
@@ -60,6 +83,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
   void dispose() {
     controller?.dispose();
     _pageController.dispose();
+    _scannerController.dispose(); // ✅ Animasyonu hafızadan sil
     super.dispose();
   }
 
@@ -72,13 +96,13 @@ class _TutorialScreenState extends State<TutorialScreen> {
 
   // ✅ GÜNCELLENMİŞ BİTİRME FONKSİYONU
   Future<void> _finishTutorial() async {
-    HapticFeedback.vibrate();
+    HapticFeedback.heavyImpact(); // Daha güçlü bir bitiş hissiyatı
     final prefs = await SharedPreferences.getInstance();
 
     // 1. Kilit Açma Verisi
     await prefs.setBool('completed_${widget.title}', true);
 
-    // 2. ✅ ÇİZİM GEÇMİŞİNE KAYDET (Profil sayfan için bu çok önemli)
+    // 2. Çizim Geçmişine Kaydet
     final List<String> history = prefs.getStringList('drawing_history') ?? [];
     if (!history.contains(widget.title)) {
       history.add(widget.title);
@@ -88,73 +112,23 @@ class _TutorialScreenState extends State<TutorialScreen> {
     // 3. İlerlemeyi Sıfırla
     await prefs.setInt('progress_${widget.title}', 0);
 
-    // 4. XP Ekle
+    // 4. XP Ekle ve Değişkene Ata
     int currentXp = prefs.getInt('total_xp') ?? 0;
-    int newXp = currentXp + 100;
-    await prefs.setInt('total_xp', newXp);
+    _earnedTotalXp = currentXp + 100;
+    await prefs.setInt('total_xp', _earnedTotalXp);
 
+    // 5. Yeni Buzlu Cam Kutlama Ekranını Göster
     if (mounted) {
-      _showSuccessDialog(newXp);
+      setState(() {
+        _showCelebration = true;
+      });
     }
-  }
-
-  void _showSuccessDialog(int totalXp) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        backgroundColor: const Color(0xFF1E293B),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.stars_rounded, color: Colors.amber, size: 80),
-              const SizedBox(height: 16),
-              Text("TEBRİKLER!",
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 24)),
-              const SizedBox(height: 8),
-              Text("+100 XP Kazandın",
-                  style: GoogleFonts.poppins(
-                      color: Colors.greenAccent,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 18)),
-              const SizedBox(height: 12),
-              Text("Toplam Puanın: $totalXp",
-                  style: const TextStyle(color: Colors.white70)),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context); // Dialogu kapat
-                    Navigator.pop(context); // LearnScreen'e dön
-                  },
-                  child: const Text("HARİKA!",
-                      style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   void _nextStep() {
     HapticFeedback.lightImpact();
     if (_currentStep < widget.imagePaths.length - 1) {
+      _startScanner(); // ✅ İleri basınca lazer efekti çalışsın
       _pageController.nextPage(
           duration: const Duration(milliseconds: 300), curve: Curves.ease);
     } else {
@@ -165,6 +139,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
   void _prevStep() {
     HapticFeedback.lightImpact();
     if (_currentStep > 0) {
+      _startScanner(); // ✅ Geri basınca da lazer efekti çalışsın
       _pageController.previousPage(
           duration: const Duration(milliseconds: 300), curve: Curves.ease);
     }
@@ -192,13 +167,118 @@ class _TutorialScreenState extends State<TutorialScreen> {
       appBar: _buildAppBar(),
       body: Stack(
         children: [
+          // 1. KAMERA KATMANI
           if (isCameraReady)
             SizedBox.expand(child: CameraPreview(controller!))
           else
             const Center(child: CircularProgressIndicator(color: Colors.white)),
+
+          // 2. ✅ YENİ: LAZER SCANNER EFEKTİ
+          _buildScannerEffect(),
+
+          // 3. AR ÇİZİM REHBERİ (Ghost, Grid, Ayna vb.)
           _buildAROverlay(),
+
+          // 4. ALT KONTROLLER
           _buildBottomControls(),
+
+          // 5. ✅ YENİ: BİTİŞ KUTLAMASI (En üst katman)
+          if (_showCelebration) _buildCelebrationOverlay(),
         ],
+      ),
+    );
+  }
+
+  // --- 🪄 LAZER SCANNER WIDGET'I ---
+  Widget _buildScannerEffect() {
+    return AnimatedBuilder(
+      animation: _scannerController,
+      builder: (context, child) {
+        double screenWidth = MediaQuery.of(context).size.width;
+        return Positioned(
+          left: screenWidth * _scannerController.value - 100,
+          top: 0,
+          bottom: 0,
+          child: Opacity(
+            opacity: (1 - _scannerController.value) * 0.6,
+            child: Container(
+              width: 80,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.blueAccent.withOpacity(0.0),
+                    Colors.blueAccent.withOpacity(0.5),
+                    Colors.blueAccent.withOpacity(0.0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // --- 🏆 BUZLU CAM XP KUTLAMA EKRANI ---
+  Widget _buildCelebrationOverlay() {
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+      child: Container(
+        color: Colors.black.withOpacity(0.8),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.stars_rounded, color: Colors.amber, size: 100),
+              const SizedBox(height: 16),
+              Text(
+                "TEBRİKLER!",
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 32,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "+100 XP Kazandın",
+                style: GoogleFonts.poppins(
+                  color: Colors.greenAccent,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 20,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                "Toplam Puanın: $_earnedTotalXp",
+                style: const TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 40),
+              SizedBox(
+                width: 200,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context); // Sayfayı kapatıp menüye döner
+                  },
+                  child: Text(
+                    "HARİKA!",
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
