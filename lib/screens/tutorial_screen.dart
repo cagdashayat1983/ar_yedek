@@ -99,10 +99,12 @@ class _TutorialScreenState extends State<TutorialScreen>
           if (spokenWords.contains("ileri") || spokenWords.contains("next")) {
             _nextStep();
             _lastCommandTime = DateTime.now();
+            _resetListening(); // 🧹 HAFIZAYI TEMİZLE VE YENİDEN DİNLE
           } else if (spokenWords.contains("geri") ||
               spokenWords.contains("back")) {
             _prevStep();
             _lastCommandTime = DateTime.now();
+            _resetListening(); // 🧹 HAFIZAYI TEMİZLE VE YENİDEN DİNLE
           }
         }
       },
@@ -111,6 +113,16 @@ class _TutorialScreenState extends State<TutorialScreen>
       partialResults: true,
       listenMode: stt.ListenMode.dictation,
     );
+  }
+
+  // 🧹 Mikrofonun hafızasını siler ve tertemiz baştan dinlemeye başlar
+  void _resetListening() async {
+    await _speech.stop(); // Dinlemeyi kes, eski kelimeleri unut
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        _startListening(); // Yeniden temiz bir sayfayla dinlemeye başla
+      }
+    });
   }
 
   void _startScanner() {
