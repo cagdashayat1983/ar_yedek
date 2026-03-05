@@ -76,20 +76,27 @@ class _TutorialScreenState extends State<TutorialScreen>
     });
   }
 
+  // 🍎 İŞTE SADECE BURASI DEĞİŞTİ: iOS için hem Mikrofon hem Speech izni aynı anda isteniyor.
   Future<void> _checkPermissionsAndInitVoice() async {
-    debugPrint("🎤 [PERMISSION] Mikrofon izni kontrol ediliyor...");
-    final status = await Permission.microphone.request();
+    debugPrint("🎤 [PERMISSION] İzinler kontrol ediliyor...");
+
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.microphone,
+      Permission.speech, // Bunu eklemezsek iOS sağır taklidi yapabilir
+    ].request();
 
     if (!mounted) return;
 
-    if (status.isGranted) {
-      debugPrint("✅ [PERMISSION] Mikrofon izni verildi.");
+    if (statuses[Permission.microphone]!.isGranted &&
+        (Platform.isIOS ? statuses[Permission.speech]!.isGranted : true)) {
+      debugPrint("✅ [PERMISSION] Mikrofon ve Ses Tanıma izni verildi.");
       _initVoiceControl();
     } else {
-      debugPrint("❌ [PERMISSION] Mikrofon izni REDDEDİLDİ.");
+      debugPrint("❌ [PERMISSION] İzinler REDDEDİLDİ.");
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Sesli komutlar için mikrofon izni gerekli."),
+          content:
+              Text("Sesli komutlar için mikrofon ve ses tanıma izni gerekli."),
         ),
       );
     }

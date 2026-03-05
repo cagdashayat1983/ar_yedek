@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io'; // 🍎 iOS KONTROLÜ İÇİN EKLENDİ
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -35,10 +36,8 @@ class SpeechService {
           debugPrint('❌ [SPEECH] Error: ${val.errorMsg}');
 
           _isListening = false;
-          // 🧹 ANDROID'İ KENDİNE GETİREN TOKAT: Hata anında motoru zorla sustur ve temizle
+          // 🧹 ANDROID VE IOS'U KENDİNE GETİREN TOKAT:
           await _safeCancel();
-
-          // ⏳ 900ms çok hızlıydı, motorun nefes alması için 1500ms (1.5 sn) bekliyoruz
           _scheduleRestart(delayMs: 1500);
         },
         onStatus: (val) {
@@ -46,7 +45,6 @@ class SpeechService {
 
           if (val == "done" || val == "notListening") {
             _isListening = false;
-            // Kapanma durumunda da 1.5 saniye mola veriyoruz
             _scheduleRestart(delayMs: 1500);
           }
         },
@@ -57,9 +55,13 @@ class SpeechService {
       final locales = await _speech.locales();
       final localeIds = locales.map((e) => e.localeId).toSet();
 
+      // 🍎 iOS KİLİDİ: Eğer cihaz dillerinde TR'yi bulamazsa ilk dile (örn: İngilizce) atlamasın diye
+      // iOS için 'tr-TR', Android için 'tr_TR' olarak zorluyoruz.
+      String fallbackLocale = Platform.isIOS ? "tr-TR" : "tr_TR";
+
       _activeLocale = _preferredLocales.firstWhere(
         (id) => localeIds.contains(id),
-        orElse: () => (locales.isNotEmpty ? locales.first.localeId : "tr_TR"),
+        orElse: () => fallbackLocale,
       );
 
       debugPrint("✅ [SPEECH] Active locale: $_activeLocale");
@@ -95,16 +97,13 @@ class SpeechService {
     try {
       await _speech.listen(
         localeId: _activeLocale,
-        listenMode: ListenMode
-            .dictation, // confirmation yerine dictation sürekli dinleme için daha iyidir
-        cancelOnError: false,
+        listenMode: ListenMode.dictation,
+        // 🍎 iOS İÇİN KRİTİK: Apple tarafında hata alınca motorun askıda kalmaması için TRUE yapıldı
+        cancelOnError: true,
         partialResults: true,
-        pauseFor: const Duration(
-            seconds: 4), // 2 saniye yerine 4 saniye sessizliğe izin ver
-        listenFor: const Duration(
-            seconds: 15), // Tek seferde daha uzun dinle (Motoru yormamak için)
+        pauseFor: const Duration(seconds: 4),
+        listenFor: const Duration(seconds: 15),
         onResult: (result) {
-          // O meşhur DARBOĞAZI kaldırdık, duyduğu an fırlatacak
           final text = result.recognizedWords.trim();
           if (text.isNotEmpty) {
             _onFinalResult?.call(text);
@@ -129,7 +128,6 @@ class SpeechService {
     _restartTimer?.cancel();
     _restartTimer = Timer(Duration(milliseconds: delayMs), () async {
       if (!_speech.isListening && !_starting) {
-        // Döngü tetiklenirken de temizlik yapalım
         await _safeCancel();
         startListening(_onFinalResult!);
       }
