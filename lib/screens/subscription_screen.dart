@@ -1,249 +1,253 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_application_1/screens/home_screen.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:camera/camera.dart'; // ✅ Eklendi
-import 'categories_screen.dart'; // ✅ Eklendi
+// lib/screens/subscription_screen.dart
 
-class SubscriptionScreen extends StatelessWidget {
-  // ✅ Akıllı yönlendirme için eklendi
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:camera/camera.dart';
+
+// ✅ 1. HATA ÇÖZÜMÜ: İmport yolunu düzelttik
+import '../l10n/app_localizations.dart';
+import 'home_screen.dart';
+
+class SubscriptionScreen extends StatefulWidget {
   final bool isFirstOffer;
   final List<CameraDescription>? cameras;
 
-  const SubscriptionScreen({
-    super.key,
-    this.isFirstOffer = false,
-    this.cameras,
-  });
+  const SubscriptionScreen(
+      {super.key, this.isFirstOffer = false, this.cameras});
 
-  Future<void> _goPro(BuildContext context) async {
-    // Pro üyeliği aktif et ve kaydet
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_pro_user', true);
+  @override
+  State<SubscriptionScreen> createState() => _SubscriptionScreenState();
+}
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Tebrikler! Artık Hayatify PRO üyesisin! 👑"),
-          backgroundColor: Colors.amber,
-        ),
-      );
+class _SubscriptionScreenState extends State<SubscriptionScreen> {
+  Offering? _currentOffering;
+  Package? _selectedPackage;
+  bool _isLoading = true;
 
-      // ✅ BAŞARILI SATIN ALMADAN SONRA YÖNLENDİRME
-      _closeOrGoHome(context);
+  @override
+  void initState() {
+    super.initState();
+    _loadOfferings();
+  }
+
+  Future<void> _loadOfferings() async {
+    try {
+      Offerings offerings = await Purchases.getOfferings();
+      if (offerings.current != null) {
+        setState(() {
+          _currentOffering = offerings.current;
+          _selectedPackage = offerings.current!.annual ??
+              offerings.current!.availablePackages.first;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      // ✅ 2. HATA ÇÖZÜMÜ: print yerine debugPrint kullanıyoruz
+      debugPrint("Abonelik hatası: $e");
+      setState(() => _isLoading = false);
     }
   }
 
-  // ✅ ÇARPIYA BASINCA VEYA SATIN ALINCA ÇALIŞACAK MANTIK
-  void _closeOrGoHome(BuildContext context) {
-    if (isFirstOffer && cameras != null) {
-      // Eğer loginden geldiyse ve çarpıya bastıysa (veya aldıysa) ana sayfaya geç
+  Future<void> _handlePurchase() async {
+    if (_selectedPackage == null) return;
+    setState(() => _isLoading = true);
+
+    try {
+      // ✅ 3. HATA ÇÖZÜMÜ: RevenueCat artık direkt 'CustomerInfo' değil, 'PurchaseResult' döndürüyor.
+      // İçindeki customerInfo'ya ulaşmak için bu şekilde güncelledik:
+      final purchaseResult = await Purchases.purchasePackage(_selectedPackage!);
+      final customerInfo = purchaseResult.customerInfo;
+
+      if (customerInfo.entitlements.all["AR Draw Hayatify Pro"]?.isActive ??
+          false) {
+        _onSuccess();
+      }
+    } catch (e) {
+      debugPrint("Satın alım hatası: $e");
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _onSuccess() {
+    final l10n = AppLocalizations.of(context)!;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.congratsPro), backgroundColor: Colors.amber),
+    );
+    _closeOrGoHome();
+  }
+
+  void _closeOrGoHome() {
+    if (widget.isFirstOffer && widget.cameras != null) {
       Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => HomeScreen(cameras: cameras!),
-        ),
-      );
+          context,
+          MaterialPageRoute(
+              builder: (_) => HomeScreen(cameras: widget.cameras!)));
     } else {
-      // Zaten uygulamanın içindeyse sadece bu sayfayı kapat
       Navigator.pop(context);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // ✅ 4. HATA ÇÖZÜMÜ: İmport düzeldiği için AppLocalizations artık tanınıyor.
+    final l10n = AppLocalizations.of(context)!;
+
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          // Arka plan süslemesi (Hafif gradient)
-          Positioned(
-            top: -100,
-            right: -100,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.amber.withOpacity(0.1),
-              ),
-            ),
-          ),
-
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: Colors.amber))
+          : Stack(
               children: [
-                // ✅ AKILLI KAPAT BUTONU
-                Align(
-                  alignment: Alignment.topLeft,
-                  child: IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 30),
-                    onPressed: () => _closeOrGoHome(context),
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                // Başlık ve İkon
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.workspace_premium_rounded,
-                      size: 60, color: Colors.amber),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  "Hayatify PRO'ya Geç",
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF1E293B),
-                  ),
-                ),
-                Text(
-                  "Sınırları kaldır, sanatını özgür bırak!",
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-
-                const SizedBox(height: 40),
-
-                // Özellik Listesi
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                _buildDecoration(),
+                SafeArea(
                   child: Column(
                     children: [
-                      _featureRow("Tüm Şablonlara Erişim", true),
-                      _featureRow("Reklamsız Deneyim", true),
-                      _featureRow("Sınırsız Çizim Süresi", true),
-                      _featureRow("Özel Kalem Araçları", true),
-                      _featureRow("Yeni Gelenlere Öncelik", true),
+                      _buildTopBar(),
+                      _buildHeader(l10n),
+                      const SizedBox(height: 30),
+                      _buildFeaturesList(l10n),
+                      const Spacer(),
+                      _buildOfferingsList(l10n),
+                      _buildBuyButton(l10n),
+                      const SizedBox(height: 20),
                     ],
                   ),
                 ),
+              ],
+            ),
+    );
+  }
 
-                const Spacer(),
+  Widget _buildOfferingsList(AppLocalizations l10n) {
+    if (_currentOffering == null) return const SizedBox();
 
-                // Fiyat Kartı
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 30),
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                        color: Colors.amber.withOpacity(0.5), width: 2),
-                    borderRadius: BorderRadius.circular(20),
-                    color: Colors.white,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("YILLIK PLAN",
-                              style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.amber,
-                                  fontSize: 12)),
-                          Text("₺199.99 / Yıl",
-                              style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.black,
-                                  fontSize: 18)),
-                        ],
-                      ),
-                      Text("7 Gün\nÜcretsiz",
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w600,
-                              color: Colors.green,
-                              fontSize: 12)),
-                    ],
+    return Column(
+      children: _currentOffering!.availablePackages.map((package) {
+        bool isSelected = _selectedPackage == package;
+        return GestureDetector(
+          onTap: () => setState(() => _selectedPackage = package),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(
+                  color: isSelected ? Colors.amber : Colors.grey.shade300,
+                  width: 2),
+              color: isSelected
+                  ? Colors.amber.withValues(alpha: 0.05)
+                  : Colors.white,
+            ),
+            child: Row(
+              children: [
+                Icon(isSelected ? Icons.check_circle : Icons.circle_outlined,
+                    color: Colors.amber),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Text(
+                    package.packageType == PackageType.annual
+                        ? l10n.proYearly
+                        : l10n.proMonthly,
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
                   ),
                 ),
-
-                const SizedBox(height: 20),
-
-                // Satın Al Butonu
-                GestureDetector(
-                  onTap: () => _goPro(context),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(
-                        horizontal: 30, vertical: 20),
-                    height: 60,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFFFA726), Color(0xFFFF7043)],
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.orange.withOpacity(0.4),
-                          blurRadius: 15,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        "PRO'YA GEÇ VE BAŞLA",
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                Text(
-                  "İstediğin zaman iptal edebilirsin.",
-                  style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey),
-                ),
-                const SizedBox(height: 20),
+                Text(package.storeProduct.priceString,
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w900)),
               ],
             ),
           ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return IconButton(
+      icon: const Icon(Icons.close_rounded, size: 30),
+      onPressed: _closeOrGoHome,
+    );
+  }
+
+  Widget _buildHeader(AppLocalizations l10n) {
+    return Column(
+      children: [
+        const Icon(Icons.workspace_premium_rounded,
+            size: 70, color: Colors.amber),
+        const SizedBox(height: 10),
+        Text(l10n.proTitle,
+            style:
+                GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w900)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Text(l10n.proDesc,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(color: Colors.grey)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeaturesList(AppLocalizations l10n) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 50),
+      child: Column(
+        children: [
+          _featureRow(l10n.feature1),
+          _featureRow(l10n.feature2),
+          _featureRow(l10n.feature3),
+          _featureRow(l10n.feature4),
         ],
       ),
     );
   }
 
-  Widget _featureRow(String text, bool active) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: active ? Colors.green.shade100 : Colors.grey.shade100,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.check,
-                size: 16, color: active ? Colors.green : Colors.grey),
-          ),
-          const SizedBox(width: 15),
-          Text(
-            text,
-            style: GoogleFonts.poppins(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF334155),
-            ),
-          ),
-        ],
+  Widget _buildBuyButton(AppLocalizations l10n) {
+    return GestureDetector(
+      onTap: _handlePurchase,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 30),
+        height: 60,
+        decoration: BoxDecoration(
+          gradient:
+              const LinearGradient(colors: [Colors.orange, Colors.deepOrange]),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.orange.withValues(alpha: 0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5))
+          ],
+        ),
+        child: Center(
+          child: Text(l10n.getStarted,
+              style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16)),
+        ),
       ),
+    );
+  }
+
+  Widget _featureRow(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(children: [
+        const Icon(Icons.check, color: Colors.green, size: 20),
+        const SizedBox(width: 10),
+        Text(text)
+      ]),
+    );
+  }
+
+  Widget _buildDecoration() {
+    return Positioned(
+      top: -50,
+      right: -50,
+      child: CircleAvatar(
+          radius: 100, backgroundColor: Colors.amber.withValues(alpha: 0.05)),
     );
   }
 }

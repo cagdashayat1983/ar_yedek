@@ -1,9 +1,12 @@
+// lib/screens/favorites_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 
+import '../l10n/app_localizations.dart'; // ✅ Dil desteği için import
 import 'ios_ar_sayfasi.dart';
 import 'ar_mini_test_screen.dart';
 
@@ -38,10 +41,12 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       }
     }
 
-    setState(() {
-      _favoritePaths = favs;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _favoritePaths = favs;
+        _isLoading = false;
+      });
+    }
   }
 
   // ✅ BEĞENİYİ KALDIRMA
@@ -58,14 +63,17 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       await prefs.setInt('likes_$path', currentLikes - 1);
     }
 
-    // Ekranda anında yok et
-    setState(() {
-      _favoritePaths.remove(path);
-    });
+    if (mounted) {
+      setState(() {
+        _favoritePaths.remove(path);
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!; // ✅ l10n tanımlandı
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA), // Açık ferah arka plan
       appBar: AppBar(
@@ -78,7 +86,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          "Beğendiklerim",
+          l10n.favorites, // ✅ Localized (Beğendiklerim)
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.w800,
             color: const Color(0xFF1E293B),
@@ -89,7 +97,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _favoritePaths.isEmpty
-              ? _buildEmptyState()
+              ? _buildEmptyState(l10n) // ✅ l10n nesnesi gönderildi
               : GridView.builder(
                   physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.all(20),
@@ -117,7 +125,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           const BoxShadow(
               color: Colors.white, offset: Offset(-5, -5), blurRadius: 8),
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black
+                  .withValues(alpha: 0.04), // ✅ withValues uygulandı
               offset: const Offset(5, 5),
               blurRadius: 8)
         ],
@@ -132,7 +141,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
                   HapticFeedback.lightImpact();
-                  // Çizime Git (Tıpkı şablonlardaki gibi)
+                  // Çizime Git (Platforma göre AR sayfası seçilir)
                   if (Platform.isIOS) {
                     Navigator.push(
                       context,
@@ -166,8 +175,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration:
-                  BoxDecoration(color: Colors.redAccent.withOpacity(0.08)),
+              decoration: BoxDecoration(
+                  color: Colors.redAccent
+                      .withValues(alpha: 0.08)), // ✅ withValues uygulandı
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -189,7 +199,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 
   // EĞER HİÇ BEĞENİLMİŞ RESİM YOKSA ÇIKACAK EKRAN
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(AppLocalizations l10n) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -197,7 +207,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           Container(
             padding: const EdgeInsets.all(30),
             decoration: BoxDecoration(
-              color: Colors.redAccent.withOpacity(0.1),
+              color: Colors.redAccent
+                  .withValues(alpha: 0.1), // ✅ withValues uygulandı
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.favorite_border_rounded,
@@ -205,7 +216,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           ),
           const SizedBox(height: 30),
           Text(
-            "Henüz Bir Şey Beğenmedin",
+            l10n.noFavoritesTitle, // ✅ Localized (Henüz Bir Şey Beğenmedin)
             style: GoogleFonts.poppins(
               fontSize: 18,
               fontWeight: FontWeight.w800,
@@ -213,11 +224,14 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          Text(
-            "Şablonlarda gezerken favori\ntasarımlarına kalp bırak!",
-            textAlign: TextAlign.center,
-            style:
-                GoogleFonts.poppins(fontSize: 14, color: Colors.grey.shade500),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Text(
+              l10n.noFavoritesDesc, // ✅ Localized (Şablonlarda gezerken...)
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                  fontSize: 14, color: Colors.grey.shade500),
+            ),
           ),
         ],
       ),

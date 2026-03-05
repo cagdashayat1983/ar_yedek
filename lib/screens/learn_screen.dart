@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../l10n/app_localizations.dart'; // ✅ l10n eklendi
 import 'tutorial_screen.dart';
 import 'profile_screen.dart';
 import 'subscription_screen.dart';
@@ -15,17 +16,6 @@ import 'home_screen.dart';
 enum Difficulty { easy, medium, hard }
 
 extension DifficultyExtension on Difficulty {
-  String get label {
-    switch (this) {
-      case Difficulty.easy:
-        return "BAŞLANGIÇ";
-      case Difficulty.medium:
-        return "ORTA SEVİYE";
-      case Difficulty.hard:
-        return "İLERİ SEVİYE";
-    }
-  }
-
   Color get color {
     switch (this) {
       case Difficulty.easy:
@@ -73,12 +63,10 @@ class _LearnScreenState extends State<LearnScreen> {
 
   int _userXp = 0;
   final int _nextLevelThreshold = 2000;
-  String _userRank = "Çaylak";
 
   @override
   void initState() {
     super.initState();
-    // Asenkron işlemlerden önce context'i sabitleyip uyarıları önlüyoruz
     final assetBundle = DefaultAssetBundle.of(context);
     _loadLessonsAndXp(assetBundle);
   }
@@ -87,7 +75,6 @@ class _LearnScreenState extends State<LearnScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       _userXp = prefs.getInt('total_xp') ?? 0;
-      _userRank = _userXp >= _nextLevelThreshold ? "Çizimci" : "Çaylak";
 
       final manifest = await AssetManifest.loadFromAssetBundle(bundle);
       final allAssets = manifest.listAssets();
@@ -130,7 +117,7 @@ class _LearnScreenState extends State<LearnScreen> {
         stepImages.sort((a, b) => a.compareTo(b));
 
         if (coverImg != null) {
-          stepImages.add(coverImg); // Gereksiz ! işareti uyarısı kalktı
+          stepImages.add(coverImg);
         }
 
         String displayTitle =
@@ -164,31 +151,30 @@ class _LearnScreenState extends State<LearnScreen> {
     }
   }
 
-  void _onLessonTap(LessonModel lesson) async {
+  void _onLessonTap(LessonModel lesson, AppLocalizations l10n) async {
     final prefs = await SharedPreferences.getInstance();
     int? savedStep = prefs.getInt('progress_${lesson.title}');
     if (savedStep != null && savedStep > 0 && savedStep < lesson.steps.length) {
-      _showResumeDialog(lesson, savedStep);
+      _showResumeDialog(lesson, savedStep, l10n);
     } else {
       _startTutorial(lesson, 0);
     }
   }
 
-  void _showResumeDialog(LessonModel lesson, int step) {
+  void _showResumeDialog(LessonModel lesson, int step, AppLocalizations l10n) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Devam Et?"),
-        content: Text(
-            "${lesson.title} dersine kaldığın yerden devam etmek ister misin?"),
+        title: Text(l10n.resumeDrawing), // ✅ Localized
+        content: Text("${lesson.title} ${l10n.resumeDesc}"), // ✅ Localized
         actions: [
           TextButton(
               onPressed: () {
                 Navigator.pop(context);
                 _startTutorial(lesson, 0);
               },
-              child: const Text("Baştan")),
+              child: Text(l10n.startOver)), // ✅ Localized
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
@@ -196,8 +182,8 @@ class _LearnScreenState extends State<LearnScreen> {
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: lesson.difficulty.color),
-            child:
-                const Text("Devam Et", style: TextStyle(color: Colors.white)),
+            child: Text(l10n.continueBtn,
+                style: const TextStyle(color: Colors.white)), // ✅ Localized
           ),
         ],
       ),
@@ -222,10 +208,12 @@ class _LearnScreenState extends State<LearnScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!; // ✅ l10n tanımlandı
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text("Gelişimim",
+        title: Text(l10n.navLearn, // ✅ Localized (Öğren)
             style: GoogleFonts.poppins(
                 color: Colors.black, fontWeight: FontWeight.w800)),
         backgroundColor: Colors.white,
@@ -243,25 +231,30 @@ class _LearnScreenState extends State<LearnScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                _buildXpHeader(),
+                _buildXpHeader(l10n), // ✅ l10n gönderildi
                 const Divider(),
                 Expanded(
                   child: ListView.builder(
                     padding: const EdgeInsets.all(20),
                     itemCount: _lessons.length,
-                    itemBuilder: (context, index) =>
-                        _buildLessonCard(_lessons[index]),
+                    itemBuilder: (context, index) => _buildLessonCard(
+                        _lessons[index], l10n), // ✅ l10n gönderildi
                   ),
                 ),
               ],
             ),
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar: _buildBottomNav(l10n), // ✅ l10n gönderildi
     );
   }
 
-  Widget _buildXpHeader() {
+  Widget _buildXpHeader(AppLocalizations l10n) {
     double progress = _userXp / _nextLevelThreshold;
     if (progress > 1.0) progress = 1.0;
+
+    // ✅ Rütbe ismini dile göre hesapla
+    String userRank =
+        _userXp >= _nextLevelThreshold ? l10n.rankArtist : l10n.rankRookie;
+
     return Container(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -272,13 +265,14 @@ class _LearnScreenState extends State<LearnScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_userRank.toUpperCase(),
+                  Text(userRank.toUpperCase(), // ✅ Localized
                       style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w900,
                           fontSize: 18,
                           color: Colors.blue)),
-                  const Text("Sanat Yolculuğu",
-                      style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  Text(
+                      l10n.aboutUs, // Veya özel bir 'Art Journey' anahtarı eklenebilir
+                      style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 ],
               ),
               Text("%${(progress * 100).toInt()}",
@@ -297,11 +291,13 @@ class _LearnScreenState extends State<LearnScreen> {
           ),
           const SizedBox(height: 8),
           if (_userXp < _nextLevelThreshold)
-            Text("${_nextLevelThreshold - _userXp} XP sonra Çizimci olacaksın!",
+            Text(
+                l10n.xpToTarget(_nextLevelThreshold -
+                    _userXp), // ✅ Localized (Placeholder kullanır)
                 style: const TextStyle(fontSize: 11, color: Colors.grey))
           else
-            const Text("Tebrikler, artık bir Çizimci'sin! 🎨",
-                style: TextStyle(
+            Text(l10n.congratsArtist, // ✅ Localized
+                style: const TextStyle(
                     fontSize: 11,
                     color: Colors.green,
                     fontWeight: FontWeight.bold)),
@@ -310,18 +306,17 @@ class _LearnScreenState extends State<LearnScreen> {
     );
   }
 
-  Widget _buildLessonCard(LessonModel lesson) {
+  Widget _buildLessonCard(LessonModel lesson, AppLocalizations l10n) {
     Color themeColor = lesson.difficulty.color;
 
     return GestureDetector(
-      onTap: () => _onLessonTap(lesson),
+      onTap: () => _onLessonTap(lesson, l10n),
       child: Container(
         height: 140,
         margin: const EdgeInsets.only(bottom: 15),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          // Güncel withValues kullanımı ile uyarılar temizlendi
           border: Border.all(color: themeColor.withValues(alpha: 0.2)),
           boxShadow: [
             BoxShadow(
@@ -377,7 +372,7 @@ class _LearnScreenState extends State<LearnScreen> {
                                   color: Colors.white, size: 10),
                               const SizedBox(width: 4),
                               Text(
-                                "YAPILDI",
+                                l10n.doneLabel, // ✅ Localized (YAPILDI)
                                 style: GoogleFonts.poppins(
                                   color: Colors.white,
                                   fontSize: 9,
@@ -407,7 +402,10 @@ class _LearnScreenState extends State<LearnScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 5),
-                    Text(lesson.isCompleted ? "TEKRAR ÇİZ" : "+100 XP KAZAN",
+                    Text(
+                        lesson.isCompleted
+                            ? l10n.drawAgain
+                            : l10n.earnXp, // ✅ Localized
                         style: TextStyle(
                             color: lesson.isCompleted
                                 ? Colors.blueAccent
@@ -415,7 +413,9 @@ class _LearnScreenState extends State<LearnScreen> {
                             fontSize: 10,
                             fontWeight: FontWeight.bold)),
                     const SizedBox(height: 5),
-                    Text("${lesson.steps.length - 1} Adım + Boyama",
+                    Text(
+                        l10n.stepsLabel(lesson.steps.length -
+                            1), // ✅ Localized ({count} Adım...)
                         style:
                             TextStyle(fontSize: 12, color: Colors.grey[600])),
                   ],
@@ -430,7 +430,7 @@ class _LearnScreenState extends State<LearnScreen> {
     );
   }
 
-  Widget _buildBottomNav() {
+  Widget _buildBottomNav(AppLocalizations l10n) {
     return BottomNavigationBar(
       currentIndex: _bottomIndex,
       onTap: (index) {
@@ -450,17 +450,21 @@ class _LearnScreenState extends State<LearnScreen> {
       type: BottomNavigationBarType.fixed,
       backgroundColor: Colors.white,
       elevation: 10,
-      selectedItemColor: Colors.black,
+      selectedItemColor: const Color(0xFF6366F1), // Home Screen ile aynı mavi
       unselectedItemColor: Colors.grey.shade400,
       selectedLabelStyle:
           GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 11),
       unselectedLabelStyle:
           GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 11),
       items: [
-        _buildColorNavItem("assets/icons/menu.png", "Ana Ekran", 0),
-        _buildColorNavItem("assets/icons/learn.png", "Öğren", 1),
-        _buildColorNavItem("assets/icons/pro.png", "PRO", 2),
-        _buildColorNavItem("assets/icons/profile.png", "Hesabım", 3),
+        _buildColorNavItem(
+            "assets/icons/menu.png", l10n.navHome, 0), // ✅ Localized
+        _buildColorNavItem(
+            "assets/icons/learn.png", l10n.navLearn, 1), // ✅ Localized
+        _buildColorNavItem(
+            "assets/icons/pro.png", l10n.navPro, 2), // ✅ Localized
+        _buildColorNavItem(
+            "assets/icons/profile.png", l10n.navProfile, 3), // ✅ Localized
       ],
     );
   }
@@ -471,7 +475,8 @@ class _LearnScreenState extends State<LearnScreen> {
     return BottomNavigationBarItem(
       icon: Opacity(
         opacity: isSelected ? 1.0 : 0.5,
-        child: Image.asset(iconPath, width: 28, height: 28),
+        child: Image.asset(iconPath,
+            width: 24, height: 24), // Home Screen ile aynı boyut (24)
       ),
       label: label,
     );

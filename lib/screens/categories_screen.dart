@@ -9,11 +9,14 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'dart:math';
 import 'dart:async';
 
+import '../l10n/app_localizations.dart';
+import '../services/subscription_service.dart';
 import '../models/category_model.dart';
 import 'templates_screen.dart';
 import 'learn_screen.dart';
 import 'subscription_screen.dart';
 import 'profile_screen.dart';
+import 'home_screen.dart';
 
 class CategoriesScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -26,6 +29,7 @@ class CategoriesScreen extends StatefulWidget {
 class _CategoriesScreenState extends State<CategoriesScreen> {
   final int _bottomIndex = 0;
   int _streakCount = 0;
+  bool _isPro = false;
   Map<String, int> _categoryCounts = {};
   Timer? _colorTimer;
 
@@ -41,51 +45,16 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     const Color(0xFFFB5607),
   ];
 
-  final List<CategoryModel> _categories = [
-    CategoryModel(
-        title: "Hayvanlar",
-        color: const Color(0xFFFF6B6B),
-        templateFolder: "animals",
-        imagePath: "assets/categories/animals.png"),
-    CategoryModel(
-        title: "Arabalar",
-        color: const Color(0xFF4ECDC4),
-        templateFolder: "cars",
-        imagePath: "assets/categories/cars.png"),
-    CategoryModel(
-        title: "Anime",
-        color: const Color(0xFFFFBE0B),
-        templateFolder: "anime",
-        imagePath: "assets/categories/anime.png"),
-    CategoryModel(
-        title: "Çizgi Film",
-        color: const Color(0xFFFF006E),
-        templateFolder: "cartoon",
-        imagePath: "assets/categories/cartoon.png"),
-    CategoryModel(
-        title: "Çiçekler",
-        color: const Color(0xFF8338EC),
-        templateFolder: "flowers",
-        imagePath: "assets/categories/flowers.png"),
-    CategoryModel(
-        title: "İnsanlar",
-        color: const Color(0xFF3A86FF),
-        templateFolder: "human",
-        imagePath: "assets/categories/human.png"),
-    CategoryModel(
-        title: "Doğa",
-        color: const Color(0xFFFB5607),
-        templateFolder: "nature",
-        imagePath: "assets/categories/nature.png"),
-  ];
+  final List<CategoryModel> _categories =
+      categories.where((c) => c.templateFolder.isNotEmpty).toList();
 
   @override
   void initState() {
     super.initState();
+    _checkSubscription();
     _checkStreak();
     _loadAllCategoryCounts();
 
-    // Arka plan rengini yavaşça değiştiren animasyon
     _colorTimer = Timer.periodic(const Duration(seconds: 8), (timer) {
       if (mounted) {
         setState(() {
@@ -94,6 +63,13 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         });
       }
     });
+  }
+
+  Future<void> _checkSubscription() async {
+    bool status = await SubscriptionService.isProUser();
+    if (mounted) {
+      setState(() => _isPro = status);
+    }
   }
 
   @override
@@ -109,13 +85,13 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       Map<String, int> counts = {};
       for (var cat in _categories) {
         final folder = cat.templateFolder.toLowerCase();
-        counts[cat.title] = allAssets
+        counts[cat.titleKey] = allAssets
             .where((path) => path.startsWith("assets/templates/$folder/"))
             .length;
       }
       if (mounted) setState(() => _categoryCounts = counts);
     } catch (e) {
-      debugPrint("Sayım hatası: $e");
+      debugPrint("Count error: $e");
     }
   }
 
@@ -126,11 +102,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: Stack(
         children: [
-          // Dinamik Renkli Arka Plan
           AnimatedContainer(
             duration: const Duration(seconds: 2),
             curve: Curves.easeInOut,
@@ -141,7 +118,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                 end: Alignment.bottomRight,
                 colors: [
                   _currentHeaderColor,
-                  _currentHeaderColor.withOpacity(0.5),
+                  _currentHeaderColor.withValues(alpha: 0.5),
                 ],
               ),
             ),
@@ -150,9 +127,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                _buildSliverAppBar(),
-
-                // Kategoriler Başlığı
+                _buildSliverAppBar(l10n),
                 SliverToBoxAdapter(
                   child: Container(
                     decoration: const BoxDecoration(
@@ -163,7 +138,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(25, 25, 25, 15),
-                      child: Text("Şablon Koleksiyonları",
+                      // ✅ Hata 143 Çözüldü: l10n.freeAtelier
+                      child: Text(l10n.freeAtelier,
                           style: GoogleFonts.poppins(
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
@@ -171,8 +147,6 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                     ),
                   ),
                 ),
-
-                // Kategori Listesi
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                   sliver: AnimationLimiter(
@@ -186,7 +160,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                               verticalOffset: 50.0,
                               child: FadeInAnimation(
                                 child: _buildAestheticCategoryCard(
-                                    _categories[index]),
+                                    _categories[index], l10n),
                               ),
                             ),
                           );
@@ -201,22 +175,31 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: _buildNormalBottomBar(),
+      bottomNavigationBar: _buildBottomNav(l10n),
     );
   }
 
-  Widget _buildAestheticCategoryCard(CategoryModel cat) {
-    final count = _categoryCounts[cat.title] ?? 0;
+  Widget _buildAestheticCategoryCard(CategoryModel cat, AppLocalizations l10n) {
+    final count = _categoryCounts[cat.titleKey] ?? 0;
+    bool showLock = cat.isPremium && !_isPro;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GestureDetector(
         onTap: () {
           HapticFeedback.mediumImpact();
-          Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) =>
-                      TemplatesScreen(category: cat, cameras: widget.cameras)));
+          if (showLock) {
+            Navigator.push(
+                context,
+                // ✅ Hata 194 Çözüldü: const eklendi
+                MaterialPageRoute(builder: (_) => const SubscriptionScreen()));
+          } else {
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => TemplatesScreen(
+                        category: cat, cameras: widget.cameras)));
+          }
         },
         child: Container(
           height: 120,
@@ -225,7 +208,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
+                    color: Colors.black.withValues(alpha: 0.03),
                     blurRadius: 15,
                     offset: const Offset(0, 5))
               ]),
@@ -237,14 +220,17 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                 margin: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                     gradient: LinearGradient(colors: [
-                      cat.color.withOpacity(0.2),
-                      cat.color.withOpacity(0.6)
+                      cat.color.withValues(alpha: 0.2),
+                      cat.color.withValues(alpha: 0.6)
                     ]),
                     borderRadius: BorderRadius.circular(24)),
                 padding: const EdgeInsets.all(10),
                 child: Hero(
-                    tag: "cat_${cat.title}",
-                    child: Image.asset(cat.imagePath, fit: BoxFit.contain)),
+                    tag: "cat_${cat.titleKey}",
+                    child: Image.asset(cat.imagePath,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) =>
+                            Icon(cat.icon, color: Colors.white, size: 40))),
               ),
               Expanded(
                 child: Padding(
@@ -253,13 +239,13 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(cat.title,
+                        Text(cat.getLocalizedTitle(context),
                             style: GoogleFonts.poppins(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
                                 color: const Color(0xFF1E293B))),
                         const SizedBox(height: 4),
-                        Text("$count şablon",
+                        Text(l10n.templatesCount(count),
                             style: GoogleFonts.poppins(
                                 fontSize: 13,
                                 color: Colors.blueGrey,
@@ -267,10 +253,15 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                       ]),
                 ),
               ),
-              const Padding(
-                  padding: EdgeInsets.only(right: 20),
-                  child: Icon(Icons.arrow_forward_ios_rounded,
-                      color: Colors.black12, size: 16)),
+              Padding(
+                padding: const EdgeInsets.only(right: 20),
+                child: Icon(
+                    showLock
+                        ? Icons.lock_rounded
+                        : Icons.arrow_forward_ios_rounded,
+                    color: showLock ? Colors.amber : Colors.black12,
+                    size: 20),
+              ),
             ],
           ),
         ),
@@ -278,7 +269,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
   }
 
-  SliverAppBar _buildSliverAppBar() {
+  SliverAppBar _buildSliverAppBar(AppLocalizations l10n) {
     return SliverAppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -287,7 +278,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             color: Colors.white, size: 22),
         onPressed: () => Navigator.pop(context),
       ),
-      title: Text("Şablonlar",
+      // ✅ Hata 282 Çözüldü: l10n.freeAtelier
+      title: Text(l10n.freeAtelier,
           style: GoogleFonts.poppins(
               color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22)),
       centerTitle: true,
@@ -299,7 +291,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                 child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(15)),
               child: Text("🔥 $_streakCount",
                   style: GoogleFonts.poppins(
@@ -310,39 +302,41 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
   }
 
-  Widget _buildNormalBottomBar() {
+  Widget _buildBottomNav(AppLocalizations l10n) {
     return BottomNavigationBar(
       currentIndex: _bottomIndex,
-      onTap: (i) {
-        if (i == 1) {
+      onTap: (index) {
+        if (index == 0) {
+          Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => HomeScreen(cameras: widget.cameras)));
+        } else if (index == 1) {
           Navigator.pushReplacement(
               context,
               MaterialPageRoute(
                   builder: (_) => LearnScreen(cameras: widget.cameras)));
-        }
-        if (i == 2) {
+        } else if (index == 2) {
           Navigator.push(context,
               MaterialPageRoute(builder: (_) => const SubscriptionScreen()));
-        }
-        if (i == 3) {
+        } else if (index == 3) {
           Navigator.push(context,
               MaterialPageRoute(builder: (_) => const ProfileScreen()));
         }
       },
       type: BottomNavigationBarType.fixed,
       backgroundColor: Colors.white,
-      elevation: 10,
-      selectedItemColor: Colors.black,
+      selectedItemColor: const Color(0xFF6366F1),
       unselectedItemColor: Colors.grey.shade400,
       selectedLabelStyle:
           GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 11),
       unselectedLabelStyle:
           GoogleFonts.poppins(fontWeight: FontWeight.w500, fontSize: 11),
       items: [
-        _buildColorNavItem("assets/icons/menu.png", "Şablonlar", 0),
-        _buildColorNavItem("assets/icons/learn.png", "Öğren", 1),
-        _buildColorNavItem("assets/icons/pro.png", "PRO", 2),
-        _buildColorNavItem("assets/icons/profile.png", "Hesabım", 3),
+        _buildColorNavItem("assets/icons/menu.png", l10n.navHome, 0),
+        _buildColorNavItem("assets/icons/learn.png", l10n.navLearn, 1),
+        _buildColorNavItem("assets/icons/pro.png", l10n.navPro, 2),
+        _buildColorNavItem("assets/icons/profile.png", l10n.navProfile, 3),
       ],
     );
   }
@@ -353,7 +347,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     return BottomNavigationBarItem(
       icon: Opacity(
         opacity: isSelected ? 1.0 : 0.5,
-        child: Image.asset(iconPath, width: 28, height: 28),
+        child: Image.asset(iconPath, width: 24, height: 24),
       ),
       label: label,
     );

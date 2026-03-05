@@ -1,10 +1,14 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // ✅ Eklendi
-import 'subscription_screen.dart'; // ✅ Eklendi
-import 'categories_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+// ✅ l10n Importu (Dizine dikkat!)
+import '../l10n/app_localizations.dart';
+
+import 'subscription_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -16,58 +20,56 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _email = TextEditingController();
-  final _pass = TextEditingController();
-
-  bool _obscure = true;
   bool _loading = false;
 
-  @override
-  void dispose() {
-    _email.dispose();
-    _pass.dispose();
-    super.dispose();
-  }
+  // ✅ Giriş ve İzin Yönetimi
+  Future<void> _handleLogin(String provider) async {
+    final l10n = AppLocalizations.of(context)!; // Hata mesajları için l10n
 
-  Future<void> _goToApp() async {
     setState(() => _loading = true);
     try {
-      // Kamera izni kontrolü
-      final status = await Permission.camera.request();
-      if (!status.isGranted) {
+      // 1. ✅ Kamera ve Mikrofon İzinlerini İste
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.camera,
+        Permission.microphone,
+      ].request();
+
+      // İzinlerden biri bile reddedildiyse durdur
+      if (statuses[Permission.camera] != PermissionStatus.granted ||
+          statuses[Permission.microphone] != PermissionStatus.granted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Kamera izni gerekli. 📸"),
+            SnackBar(
+              content: Text(l10n.permissionError), // ✅ l10n kullanıldı
               backgroundColor: Colors.amber,
+              duration: const Duration(seconds: 3),
             ),
           );
         }
         return;
       }
 
-      // ✅ KULLANICIYI GİRİŞ YAPTI OLARAK İŞARETLE
+      // 2. Kullanıcıyı sisteme kaydet
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('is_logged_in', true);
+      await prefs.setString('login_provider', provider);
 
       if (!mounted) return;
 
-      // ✅ DİREKT ANA SAYFAYA DEĞİL, İLK SATIŞ TEKLİFİNE (SUBSCRIPTION) YOLLA
-      // Giderken de "Bu ilk açılış teklifi, çarpıya basarsan ana sayfaya git" demek için
-      // isFirstOffer parametresini true yolluyoruz.
+      // 3. Abonelik (Subscription) Ekranına Yolla
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => SubscriptionScreen(
             cameras: widget.cameras,
-            isFirstOffer: true, // İlk teklif olduğunu belirtiyoruz
+            isFirstOffer: true,
           ),
         ),
       );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Hata: $e")),
+          SnackBar(content: Text("Error: $e")),
         );
       }
     } finally {
@@ -77,11 +79,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ DİL DESTEĞİ TANIMLAMASI
+    final l10n = AppLocalizations.of(context)!;
+
+    // 📱 Platform kontrolü
+    bool isAndroid = true;
+    try {
+      isAndroid = Platform.isAndroid;
+    } catch (e) {
+      isAndroid = true;
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // --- ARKA PLAN SÜSLEMELERİ ---
+          // Arka Plan Süslemeleri
           Positioned(
             top: -100,
             right: -80,
@@ -90,7 +103,8 @@ class _LoginScreenState extends State<LoginScreen> {
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.amber.withOpacity(0.08),
+                // ✅ withValues KULLANIMI (Yeni Standart)
+                color: Colors.amber.withValues(alpha: 0.08),
               ),
             ),
           ),
@@ -102,12 +116,11 @@ class _LoginScreenState extends State<LoginScreen> {
               height: 200,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.orange.withOpacity(0.05),
+                color: Colors.orange.withValues(alpha: 0.05),
               ),
             ),
           ),
 
-          // --- ANA İÇERİK ---
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -115,13 +128,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // LOGO / ICON
+                    // Logo
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.15),
+                        color: Colors.amber.withValues(alpha: 0.15),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.auto_awesome_rounded,
@@ -130,7 +142,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 24),
 
                     Text(
-                      "Hoş Geldin!",
+                      l10n.welcomeTitle, // ✅ "Hoş Geldin!"
                       style: GoogleFonts.poppins(
                         fontSize: 28,
                         fontWeight: FontWeight.w900,
@@ -139,169 +151,97 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      "Hayatify ile çizmeye hazır mısın?",
+                      l10n.welcomeSubtitle, // ✅ "Sihirli AR dünyasına katıl"
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         color: Colors.grey.shade600,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 50),
 
-                    // --- GİRİŞ FORMU ---
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _inputLabel("Email Adresi"),
-                        _CleanInput(
-                          controller: _email,
-                          hint: "email@adres.com",
-                          prefix: Icons.alternate_email_rounded,
+                    if (_loading)
+                      const CircularProgressIndicator(color: Colors.orange)
+                    else ...[
+                      // Platforma Özel Butonlar
+                      if (isAndroid) ...[
+                        _buildLoginBtn(
+                          icon: Icons.g_mobiledata_rounded,
+                          iconSize: 34,
+                          text: l10n.googleLogin, // ✅ Google Dil Desteği
+                          color: const Color(0xFFDB4437),
+                          textColor: Colors.white,
+                          onTap: () => _handleLogin("google"),
                         ),
-                        const SizedBox(height: 20),
-
-                        _inputLabel("Şifre"),
-                        _CleanInput(
-                          controller: _pass,
-                          hint: "••••••••",
-                          prefix: Icons.lock_outline_rounded,
-                          obscureText: _obscure,
-                          suffix: IconButton(
-                            icon: Icon(
-                                _obscure
-                                    ? Icons.visibility_off_rounded
-                                    : Icons.visibility_rounded,
-                                color: Colors.grey.shade400),
-                            onPressed: () =>
-                                setState(() => _obscure = !_obscure),
-                          ),
+                        const SizedBox(height: 16),
+                        _buildLoginBtn(
+                          icon: Icons.apple_rounded,
+                          text: l10n.appleLogin, // ✅ Apple Dil Desteği
+                          color: Colors.black,
+                          textColor: Colors.white,
+                          onTap: () => _handleLogin("apple"),
                         ),
-                        const SizedBox(height: 12),
+                      ] else ...[
+                        _buildLoginBtn(
+                          icon: Icons.apple_rounded,
+                          text: l10n.appleLogin,
+                          color: Colors.black,
+                          textColor: Colors.white,
+                          onTap: () => _handleLogin("apple"),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildLoginBtn(
+                          icon: Icons.g_mobiledata_rounded,
+                          iconSize: 34,
+                          text: l10n.googleLogin,
+                          color: Colors.white,
+                          textColor: Colors.black87,
+                          borderColor: Colors.grey.shade300,
+                          onTap: () => _handleLogin("google"),
+                        ),
+                      ],
 
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: () {},
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
+                      const SizedBox(height: 30),
+
+                      // Ayırıcı
+                      Row(
+                        children: [
+                          Expanded(child: Divider(color: Colors.grey.shade200)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 15),
                             child: Text(
-                              "Şifremi Unuttum",
+                              l10n.or, // ✅ "Veya"
                               style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.orange.shade400,
-                              ),
+                                  fontSize: 12,
+                                  color: Colors.grey.shade500,
+                                  fontWeight: FontWeight.w600),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 30),
+                          Expanded(child: Divider(color: Colors.grey.shade200)),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
 
-                        // GİRİŞ YAP BUTONU
-                        GestureDetector(
-                          onTap: _loading ? null : _goToApp,
-                          child: Container(
-                            height: 60,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFFFFA726), Color(0xFFFF7043)],
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.orange.withOpacity(0.4),
-                                  blurRadius: 15,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            child: Center(
-                              child: _loading
-                                  ? const SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(
-                                          color: Colors.white, strokeWidth: 3))
-                                  : Text(
-                                      "GİRİŞ YAP",
-                                      style: GoogleFonts.poppins(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 16,
-                                        letterSpacing: 1,
-                                      ),
-                                    ),
-                            ),
+                      // Misafir Girişi
+                      TextButton(
+                        onPressed: () => _handleLogin("guest"),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 12, horizontal: 20),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
                           ),
                         ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 40),
-
-                    // --- SOSYAL GİRİŞ ---
-                    Row(
-                      children: [
-                        Expanded(child: Divider(color: Colors.grey.shade200)),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 15),
-                          child: Text(
-                            "Veya",
-                            style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey.shade500,
-                                fontWeight: FontWeight.w600),
+                        child: Text(
+                          l10n.guestLogin, // ✅ "Misafir Olarak Başla"
+                          style: GoogleFonts.poppins(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey.shade600,
                           ),
                         ),
-                        Expanded(child: Divider(color: Colors.grey.shade200)),
-                      ],
-                    ),
-                    const SizedBox(height: 25),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _SocialBtn(
-                            icon: Icons.g_mobiledata_rounded,
-                            color: Colors.redAccent,
-                            onTap: _goToApp),
-                        const SizedBox(width: 20),
-                        _SocialBtn(
-                            icon: Icons.apple_rounded,
-                            color: Colors.black,
-                            onTap: _goToApp),
-                        const SizedBox(width: 20),
-                        _SocialBtn(
-                            icon: Icons.facebook_rounded,
-                            color: const Color(0xFF1877F2),
-                            onTap: _goToApp),
-                      ],
-                    ),
-
-                    const SizedBox(height: 40),
-
-                    // KAYIT OL LİNKİ
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text("Hesabın yok mu? ",
-                            style: GoogleFonts.poppins(
-                                fontSize: 13, color: Colors.grey.shade600)),
-                        GestureDetector(
-                          onTap: () {},
-                          child: Text(
-                            "Kayıt Ol",
-                            style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.orange.shade500),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ]
                   ],
                 ),
               ),
@@ -312,97 +252,49 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _inputLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Text(
-        text,
-        style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF334155)),
-      ),
-    );
-  }
-}
-
-class _CleanInput extends StatelessWidget {
-  final TextEditingController controller;
-  final String hint;
-  final IconData prefix;
-  final bool obscureText;
-  final Widget? suffix;
-
-  const _CleanInput({
-    required this.controller,
-    required this.hint,
-    required this.prefix,
-    this.obscureText = false,
-    this.suffix,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200, width: 1.5),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: obscureText,
-        style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF1E293B)),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey.shade400),
-          prefixIcon: Icon(prefix, color: Colors.grey.shade400, size: 22),
-          suffixIcon: suffix,
-          border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        ),
-      ),
-    );
-  }
-}
-
-class _SocialBtn extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _SocialBtn({
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildLoginBtn({
+    required IconData icon,
+    double iconSize = 24,
+    required String text,
+    required Color color,
+    required Color textColor,
+    Color? borderColor,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(12),
+        height: 55,
+        width: double.infinity,
         decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.grey.shade200, width: 1.5),
+          color: color,
+          borderRadius: BorderRadius.circular(16),
+          border: borderColor != null
+              ? Border.all(color: borderColor, width: 1.5)
+              : null,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: color.withValues(alpha: 0.2), // ✅ withValues
               blurRadius: 10,
               offset: const Offset(0, 4),
-            )
+            ),
           ],
         ),
-        child: Icon(icon, color: color, size: 28),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: textColor, size: iconSize),
+            const SizedBox(width: 8),
+            Text(
+              text,
+              style: GoogleFonts.poppins(
+                color: textColor,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

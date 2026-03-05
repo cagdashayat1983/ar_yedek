@@ -1,8 +1,13 @@
+// lib/screens/ar_mini_test_screen.dart
+
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:camera/camera.dart';
+import 'package:google_fonts/google_fonts.dart'; // ✅ Şık font eklendi
 import 'package:ar_flutter_plugin_plus/ar_flutter_plugin_plus.dart';
 import 'package:ar_flutter_plugin_plus/datatypes/config_planedetection.dart';
 import 'package:ar_flutter_plugin_plus/datatypes/hittest_result_types.dart';
@@ -15,6 +20,8 @@ import 'package:ar_flutter_plugin_plus/models/ar_anchor.dart';
 import 'package:ar_flutter_plugin_plus/models/ar_hittest_result.dart';
 import 'package:ar_flutter_plugin_plus/models/ar_node.dart';
 import 'package:vector_math/vector_math_64.dart' as v;
+
+import 'tutorial_screen.dart';
 
 class ARMiniTestScreen extends StatefulWidget {
   final String glbAssetPath;
@@ -46,10 +53,8 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   bool _flashOn = false;
   bool _isRecording = false;
 
-  int _gridMode = 0;
   int _tiltMode = 0;
 
-  // ✅ ÇÖZÜM 1: Başlangıç boyutu 0.6'dan 1.0'a çıkarıldı. (Direkt %100 boyutunda başlar)
   double _scale = 1.0;
   double _rotYDeg = 0.0;
 
@@ -66,7 +71,7 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   double _baseZ = 0.0;
 
   double _opacity = 0.6;
-  bool _useIllusionMode = true; // Direkt Çizim Modu
+  final bool _useIllusionMode = false;
 
   Timer? _updateTimer;
   bool _rebuilding = false;
@@ -124,23 +129,15 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   v.Vector4 _combinedRotation() {
     final tiltDeg = _tiltMode == 0 ? 0.0 : (_tiltMode == 1 ? 15.0 : 30.0);
 
-    final qBase = v.Quaternion.axisAngle(
-      v.Vector3(1, 0, 0),
-      -math.pi / 2,
-    );
+    final qBase = v.Quaternion.axisAngle(v.Vector3(1, 0, 0), -math.pi / 2);
 
     double yawDeg = (_rotYDeg + 180.0) % 360.0;
     if (_mirrored) yawDeg = (360.0 - yawDeg) % 360.0;
 
-    final qYawWorld = v.Quaternion.axisAngle(
-      v.Vector3(0, 1, 0),
-      _degToRad(yawDeg),
-    );
-
-    final qTilt = v.Quaternion.axisAngle(
-      v.Vector3(1, 0, 0),
-      _degToRad(tiltDeg),
-    );
+    final qYawWorld =
+        v.Quaternion.axisAngle(v.Vector3(0, 1, 0), _degToRad(yawDeg));
+    final qTilt =
+        v.Quaternion.axisAngle(v.Vector3(1, 0, 0), _degToRad(tiltDeg));
 
     final q = (qYawWorld * (qBase * qTilt))..normalize();
     final w = q.w.clamp(-1.0, 1.0);
@@ -275,6 +272,7 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
 
   Future<void> _clearAll() async {
     if (_objects == null || _anchors == null) return;
+    HapticFeedback.mediumImpact();
 
     if (_activeNode != null) {
       try {
@@ -290,7 +288,7 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     setState(() {
       _activeNode = null;
       _activeAnchor = null;
-      _scale = 1.0; // SIFIRLARKEN DE YİNE BÜYÜK OLSUN
+      _scale = 1.0;
       _rotYDeg = 0.0;
       _liftMeters = 0.0;
       _posX = 0.0;
@@ -348,55 +346,37 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     if (!_useIllusionMode) _debounceApply(ms: 60);
   }
 
-  void _toggleGrid() {
-    setState(() {
-      if (_gridMode == 0)
-        _gridMode = 3;
-      else if (_gridMode == 3)
-        _gridMode = 4;
-      else if (_gridMode == 4)
-        _gridMode = 5;
-      else
-        _gridMode = 0;
-    });
-  }
-
   void _toggleTilt() {
+    HapticFeedback.selectionClick();
     setState(() => _tiltMode = (_tiltMode + 1) % 3);
     if (!_useIllusionMode) _debounceApply(ms: 80);
   }
 
   void _toggleMirror() {
+    HapticFeedback.selectionClick();
     setState(() => _mirrored = !_mirrored);
     if (!_useIllusionMode) _debounceApply(ms: 80);
   }
 
   void _rotPlus90() {
+    HapticFeedback.selectionClick();
     setState(() => _rotYDeg = _useIllusionMode
         ? (_rotYDeg + 90.0) % 360.0
         : (_rotYDeg - 90.0) % 360.0);
     if (!_useIllusionMode) _debounceApply(ms: 80);
   }
 
-  void _toggleFlash() {
-    setState(() => _flashOn = !_flashOn);
-  }
-
-  void _toggleRecording() {
-    setState(() => _isRecording = !_isRecording);
-  }
-
   void _liftUp() {
+    HapticFeedback.selectionClick();
     setState(() => _liftMeters = (_liftMeters + _liftStep).clamp(-0.30, 0.60));
     if (!_useIllusionMode) _debounceApply(ms: 50);
   }
 
   void _liftDown() {
+    HapticFeedback.selectionClick();
     setState(() => _liftMeters = (_liftMeters - _liftStep).clamp(-0.30, 0.60));
     if (!_useIllusionMode) _debounceApply(ms: 50);
   }
-
-  void _togglePlanes() => setState(() => _showPlanes = !_showPlanes);
 
   @override
   Widget build(BuildContext context) {
@@ -427,52 +407,12 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                     planeDetectionConfig:
                         PlaneDetectionConfig.horizontalAndVertical,
                   ),
-                  if (_useIllusionMode)
-                    Positioned.fill(
-                      child: Center(
-                        child: Opacity(
-                          opacity: _opacity,
-                          child: Transform(
-                            alignment: FractionalOffset.center,
-                            transform: Matrix4.identity()
-                              ..setEntry(3, 2, 0.001)
-                              ..translate(_posX, _posZ)
-                              ..rotateX(_degToRad(_tiltMode == 0
-                                  ? 65.0
-                                  : (_tiltMode == 1 ? 45.0 : 0.0)))
-                              ..rotateZ(_degToRad(_rotYDeg))
-                              ..scale(_scale, _scale, 1.0),
-                            child: Transform.flip(
-                              flipX: _mirrored,
-                              // ✅ ÇÖZÜM 2: Resim ekranın %90'ını kaplayacak şekilde DEVASA ve NET açılır. Asla bozulmaz!
-                              child: Image.asset(
-                                pngPath,
-                                width: MediaQuery.of(context).size.width * 0.9,
-                                fit: BoxFit.contain,
-                                errorBuilder: (c, o, s) => const Icon(
-                                    Icons.broken_image,
-                                    color: Colors.white,
-                                    size: 100),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
           ),
-          if (_gridMode > 0)
-            IgnorePointer(
-              child: Positioned.fill(
-                child: RepaintBoundary(
-                  child: CustomPaint(
-                    painter: GridPainter(gridCount: _gridMode),
-                  ),
-                ),
-              ),
-            ),
+
+          // ÜST BAR (Geri, Normal Mod'a Geçiş, Silme)
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
@@ -492,42 +432,55 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                       children: [
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon:
-                              const Icon(Icons.arrow_back, color: Colors.white),
+                          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white),
                         ),
                         TextButton.icon(
                           onPressed: () async {
-                            await _clearAll();
-                            setState(
-                                () => _useIllusionMode = !_useIllusionMode);
-                            if (!_useIllusionMode) {
-                              _showToast("AR Modu: Zemine dokun.");
-                            }
+                            HapticFeedback.lightImpact();
+                            final cameras = await availableCameras();
+                            if (!context.mounted) return;
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => TutorialScreen(
+                                  title: "Çizim Şablonu",
+                                  imagePaths: [pngPath],
+                                  cameras: cameras,
+                                  isLocalFile: false,
+                                ),
+                              ),
+                            );
                           },
-                          icon: Icon(
-                            _useIllusionMode
-                                ? Icons.view_in_ar
-                                : Icons.edit_note,
+                          icon: const Icon(
+                            Icons.camera_alt_rounded,
                             color: Colors.cyanAccent,
+                            size: 18,
                           ),
                           label: Text(
-                            _useIllusionMode ? "AR'A GEÇ" : "ÇİZİME GEÇ",
-                            style: const TextStyle(
+                            "NORMAL MOD",
+                            style: GoogleFonts.poppins(
                                 color: Colors.cyanAccent,
-                                fontWeight: FontWeight.bold),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13),
                           ),
                         ),
                         const Spacer(),
                         if (_toastText.isNotEmpty)
-                          Text(
-                            _toastText,
-                            style: const TextStyle(
-                                color: Colors.white70, fontSize: 12),
+                          Expanded(
+                            child: Text(
+                              _toastText,
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(
+                                  color: Colors.white70, fontSize: 10),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         const Spacer(),
                         IconButton(
                           onPressed: _clearAll,
-                          icon: const Icon(Icons.delete_outline,
+                          icon: const Icon(Icons.delete_outline_rounded,
                               color: Colors.white),
                         ),
                       ],
@@ -537,116 +490,107 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
               ),
             ),
           ),
+
+          // ✅ YENİ ALT MENÜ (TUTORIAL_SCREEN STİLİ)
           Positioned(
+            bottom: 0,
             left: 10,
             right: 10,
-            bottom: 18,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_useIllusionMode)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.opacity,
-                            color: Colors.white54, size: 20),
-                        Expanded(
-                          child: Slider(
-                            value: _opacity,
-                            min: 0.1,
-                            max: 1.0,
-                            activeColor: Colors.cyanAccent,
-                            inactiveColor: Colors.white24,
-                            onChanged: (val) => setState(() => _opacity = val),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(35),
+            child: SafeArea(
+              top: false,
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          vertical: 14, horizontal: 12),
+                          horizontal: 12, vertical: 12),
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.black.withOpacity(0.70),
-                            Colors.black.withOpacity(0.50)
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(35),
+                        color: Colors.black.withOpacity(0.40),
+                        borderRadius: BorderRadius.circular(20),
                         border:
-                            Border.all(color: Colors.white.withOpacity(0.15)),
+                            Border.all(color: Colors.white.withOpacity(0.10)),
                       ),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        child: Row(
-                          children: [
-                            if (_useIllusionMode) ...[
-                              _btn(
-                                  _isRecording
-                                      ? Icons.stop_circle_outlined
-                                      : Icons.videocam,
-                                  _isRecording ? "Durdur" : "Kaydet",
-                                  _isRecording,
-                                  Colors.redAccent,
-                                  _toggleRecording),
-                              const SizedBox(width: 8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _controlBtn(
+                                  icon: _tapLocked
+                                      ? Icons.lock_rounded
+                                      : Icons.lock_open_rounded,
+                                  label: _tapLocked ? "Locked" : "Lock",
+                                  onPressed: () {
+                                    HapticFeedback.selectionClick();
+                                    setState(() => _tapLocked = !_tapLocked);
+                                  },
+                                  active: _tapLocked,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: _controlBtn(
+                                  icon: Icons.flip_rounded,
+                                  label: "Flip",
+                                  onPressed: _toggleMirror,
+                                  active: _mirrored,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: _controlBtn(
+                                  icon: Icons.rotate_90_degrees_ccw_rounded,
+                                  label: "Rotate",
+                                  onPressed: _rotPlus90,
+                                  active: _rotYDeg != 0.0,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: _controlBtn(
+                                  icon: Icons.view_in_ar_rounded,
+                                  label: _tiltMode == 0
+                                      ? "Tilt"
+                                      : "Tilt ${_tiltMode}x",
+                                  onPressed: _toggleTilt,
+                                  active: _tiltMode > 0,
+                                ),
+                              ),
                             ],
-                            _btn(
-                                _tapLocked ? Icons.lock : Icons.lock_open,
-                                "Kilit",
-                                _tapLocked,
-                                Colors.redAccent,
-                                () => setState(() => _tapLocked = !_tapLocked)),
-                            const SizedBox(width: 8),
-                            _btn(
-                                Icons.view_in_ar,
-                                _tiltMode == 0 ? "Eğim" : "${_tiltMode}x",
-                                _tiltMode > 0,
-                                Colors.orangeAccent,
-                                _toggleTilt),
-                            const SizedBox(width: 8),
-                            _btn(Icons.flip, "Ayna", _mirrored,
-                                Colors.blueAccent, _toggleMirror),
-                            const SizedBox(width: 8),
-                            _btn(Icons.rotate_90_degrees_cw, "+90°", false,
-                                Colors.white, _rotPlus90),
-                            const SizedBox(width: 8),
-                            _btn(Icons.arrow_downward, "Y-", true,
-                                Colors.cyanAccent, _liftDown),
-                            const SizedBox(width: 8),
-                            _btn(Icons.arrow_upward, "Y+", true,
-                                Colors.cyanAccent, _liftUp),
-                            const SizedBox(width: 8),
-                            _btn(
-                                Icons.grid_on,
-                                _gridMode == 0 ? "Izgara" : "${_gridMode}x",
-                                _gridMode > 0,
-                                Colors.greenAccent,
-                                _toggleGrid),
-                            if (_useIllusionMode) ...[
-                              const SizedBox(width: 8),
-                              _btn(_flashOn ? Icons.flash_on : Icons.flash_off,
-                                  "Flaş", _flashOn, Colors.amber, _toggleFlash),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _controlBtn(
+                                  icon: Icons.arrow_downward_rounded,
+                                  label: "Y -",
+                                  onPressed: _liftDown,
+                                  active: false,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: _controlBtn(
+                                  icon: Icons.arrow_upward_rounded,
+                                  label: "Y +",
+                                  onPressed: _liftUp,
+                                  active: false,
+                                ),
+                              ),
                             ],
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -654,72 +598,34 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     );
   }
 
-  Widget _btn(IconData icon, String label, bool isActive, Color activeColor,
-      VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
+  // ✅ KUSURSUZ GLASSMORPHISM BUTON MİMARİSİ
+  Widget _controlBtn({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    bool active = false,
+  }) {
+    return ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+          elevation: 0,
+          backgroundColor: active
+              ? Colors.white.withOpacity(0.20)
+              : Colors.white.withOpacity(0.08),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              gradient: isActive
-                  ? LinearGradient(
-                      colors: [activeColor, activeColor.withOpacity(0.6)])
-                  : LinearGradient(colors: [
-                      Colors.white.withOpacity(0.12),
-                      Colors.white.withOpacity(0.06)
-                    ]),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                  color: isActive
-                      ? activeColor.withOpacity(0.5)
-                      : Colors.white.withOpacity(0.10),
-                  width: 1.5),
-              boxShadow: isActive
-                  ? [
-                      BoxShadow(
-                          color: activeColor.withOpacity(0.35),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2))
-                    ]
-                  : [],
-            ),
-            child: Icon(icon, color: Colors.white, size: 22),
-          ),
+          Icon(icon, size: 20),
           const SizedBox(height: 4),
           Text(label,
-              style: TextStyle(
-                  color: isActive ? activeColor : Colors.white54,
-                  fontSize: 9,
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+              style:
+                  GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w600))
         ],
       ),
     );
   }
-}
-
-class GridPainter extends CustomPainter {
-  final int gridCount;
-  GridPainter({required this.gridCount});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.3)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-    final w = size.width / gridCount;
-    final h = size.height / gridCount;
-
-    for (int i = 1; i < gridCount; i++) {
-      canvas.drawLine(Offset(w * i, 0), Offset(w * i, size.height), paint);
-      canvas.drawLine(Offset(0, h * i), Offset(size.width, h * i), paint);
-    }
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

@@ -1,0 +1,191 @@
+{
+  "@@locale": "en",
+  "appTitle": "Hayatify AR Drawing",
+  "appVersion": "Version 1.0.3 - Hayatify: AR Draw",
+
+  "favorites": "Favorites",
+  "noFavoritesTitle": "No Favorites Yet",
+  "noFavoritesDesc": "Leave a heart on your favorite designs while browsing templates!",
+
+  "welcomeTitle": "Welcome!",
+  "welcomeSubtitle": "Join the magic AR world",
+  "googleLogin": "Continue with Google",
+  "appleLogin": "Continue with Apple",
+  "or": "Or",
+  "guestLogin": "Start as Guest",
+  "permissionError": "Camera and Microphone permissions are required. 📸🎤",
+  "skip": "Skip",
+  "getStarted": "START",
+
+  "historyTitle": "Drawing History",
+  "noHistoryDesc": "You haven't completed any drawings yet.",
+  "historyCompleted": "Successfully completed",
+
+  "onb1Title": "Magic AR Drawing",
+  "onb1Desc": "Fix your phone and transfer lines to your paper easily.",
+  "onb2Title": "Learn Step by Step",
+  "onb2Desc": "Improve your skills with hundreds of templates.",
+  "onb3Title": "Gallery to Template",
+  "onb3Desc": "Pick any photo from your gallery and start drawing instantly.",
+  "onb4Title": "Level Up",
+  "onb4Desc": "Earn XP and turn from a 'Rookie' to an 'Artist'!",
+
+  "navHome": "Home",
+  "navLearn": "Learn",
+  "navPro": "PRO",
+  "navProfile": "Profile",
+
+  "drawingSchool": "Drawing School",
+  "drawingSchoolDesc": "Improve your drawing skills step by step and level up by earning XP.",
+  "freeAtelier": "Free Atelier",
+  "freeAtelierDesc": "Explore ready templates or draw from your own gallery.",
+
+  "profileTitle": "MY PROFILE",
+  "rankLabel": "Rank",
+  "rankRookie": "Rookie",
+  "rankArtist": "Artist",
+  "rankMaster": "Apprentice",
+  "rankExplorer": "Art Explorer",
+  "rankLegend": "Legendary Artist",
+  "activities": "ACTIVITIES",
+  "drawYourPhoto": "Draw Your Photo",
+  "favorites": "Favorites",
+  "myHistory": "My Drawing History",
+  "support": "SUPPORT",
+  "helpCenter": "Help Center",
+  "aboutUs": "About Us",
+  "developmentLevel": "MY PROGRESS",
+  "congratsArtist": "Congrats, you are an Artist! 🎨",
+  "roadmapTitle": "MY PROGRESS JOURNEY",
+  
+  "xpToTarget": "{xp} XP left to target",
+  "@xpToTarget": {
+    "placeholders": {
+      "xp": { "type": "int" }
+    }
+  },
+  "totalXpDisplay": "{xp} TOTAL XP",
+  "@totalXpDisplay": {
+    "placeholders": {
+      "xp": { "type": "int" }
+    }
+  },
+  "xpRequired": "{xp} XP REQUIRED",
+  "@xpRequired": {
+    "placeholders": {
+      "xp": { "type": "int" }
+    }
+  },
+
+  "proTitle": "HAYATIFY PRO",
+  "proDesc": "Unlock all and draw unlimited",
+  "proSubtitle": "Remove limits, set your art free!",
+  "feature1": "Access All Templates",
+  "feature2": "Ad-Free Experience",
+  "feature3": "Unlimited Drawing Time",
+  "feature4": "Special Brush Tools",
+  "buyButton": "GO PRO & START",
+  "cancelPolicy": "Cancel anytime you want.",
+  "congratsPro": "Congrats! You are now a PRO member! 👑",
+  "proMonthly": "MONTHLY PLAN",
+  "proYearly": "YEARLY PLAN",
+  "freeTrial": "7 Days Free",
+  "proMember": "Pro Membership",
+  "proBenefits": "Pro Benefits",
+  "proBenefitsList": "• Unlimited access to premium templates\n• Ad-free experience\n• VIP Support\n• Early access to new features",
+
+  "sketchTemplate": "Pencil Sketch",
+  "sketchDesc": "Convert image to line art template",
+  "originalPhoto": "Original Photo",
+  "originalDesc": "Project the image as it is",
+  "difficultyEasy": "BEGINNER",
+  "difficultyMedium": "INTERMEDIATE",
+  "difficultyHard": "ADVANCED",
+  "resumeDrawing": "Resume?",
+  "resumeDesc": "Would you like to continue {title}?",
+  "@resumeDesc": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "startOver": "Start Over",
+  "continueBtn": "Continue",
+  "startDrawing": "Start Drawing",
+  "sort": "Sort",
+  "newest": "Newest",
+  "oldest": "Oldest",
+  "popular": "Popular",
+  "drawYourOwn": "Draw Your Own Photo",
+  "doneLabel": "DONE",
+  "drawAgain": "DRAW AGAIN",
+  "earnXp": "EARN +100 XP",
+  "stepsLabel": "{count} Steps + Painting",
+  "@stepsLabel": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "templatesCount": "{count} templates",
+  "@templatesCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+
+  "animals": "Animals",
+  "cars": "Cars",
+  "anime": "Anime",
+  "cartoon": "Cartoon",
+  "flowers": "Flowers",
+  "human": "Humans",
+  "nature": "Nature",
+  "tattoo": "Tattoo",
+  "profile": "Profile",
+
+  "historyTitle": "Drawing History",
+  "noHistoryDesc": "You haven't completed any drawings yet.",
+  "historyCompleted": "Successfully completed",
+  "noFavoritesTitle": "No Favorites Yet",
+  "noFavoritesDesc": "Leave a heart on your favorite designs!",
+
+  "helpTitle": "Help and Features",
+  "magicAssistant": "MAGIC ASSISTANT",
+  "voiceCommands": "Voice Commands",
+  "voiceCommandsDesc": "Manage the app without taking your hands off the paper! Just say these commands:",
+  "voiceCommandsList": "• \"Next\" / \"Back\"\n• \"Step 4\"\n• \"Lock\" / \"Unlock\"\n• \"Opacity 50\"\n• \"Grid 4\" / \"Grid Off\"\n• \"Mirror\"",
+  
+  "toolsLabel": "TOOLS",
+  "toolArMode": "AR Mode",
+  "toolArModeDesc": "Projects the template onto paper using the camera. Fix your phone and draw by looking through the screen.",
+  "toolLock": "Screen Lock",
+  "toolLockDesc": "Prevents the template from shifting while drawing by freezing the screen.",
+  "toolOpacity": "Opacity",
+  "toolOpacityDesc": "Adjusts the transparency of the template on the camera feed.",
+  "toolGrid": "Grid",
+  "toolGridDesc": "Adds guide lines for better proportions on paper.",
+  "toolMirror": "Mirror Mode",
+  "toolMirrorDesc": "Flips the template horizontally. Ideal for symmetry or tattoo designs.",
+  "toolFlash": "Flash Support",
+  "toolFlashDesc": "Turns on the flashlight to see the paper better in dark environments.",
+
+  "contentTemplatesLabel": "CONTENT & TEMPLATES",
+  "categoriesLabel": "Hundreds of Categories",
+  "categoriesDesc": "Explore hundreds of templates from animals to cars.",
+  "progressXpLabel": "PROGRESS & XP",
+  "howToEarnXp": "How to Earn XP?",
+  "howToEarnXpDesc": "Earn +100 XP instantly when you complete (Finish) a drawing.",
+  "levelSystem": "Level System",
+  "levelSystemDesc": "Collect XP to level up from a Rookie to a master Artist.",
+
+  "aboutSlogan": "Bring Your Drawings to Life!",
+  "ourStoryTitle": "Our Story",
+  "ourStoryDesc": "We believe that an artist lies within everyone, but sometimes they just need a little guidance. Hayatify was born to make art accessible and fun for everyone by combining complex drawing techniques with Augmented Reality (AR) and AI.",
+  "ourMissionTitle": "Our Mission",
+  "ourMissionDesc": "We want to be more than just an app; we want to be a progress companion. Whether you're a rookie picking up a pencil for the first time or a master sharpening your skills, our passion is to accompany your art journey with voice commands, hundreds of templates, and our leveling system.",
+  "stayConnected": "Stay Connected",
+  "visitWebsite": "Visit Our Website",
+  "followInstagram": "Follow Us on Instagram",
+  "contactSupport": "Contact Us for Support",
+  "privacyPolicy": "Privacy Policy",
+  "termsOfUse": "Terms of Use"
+}

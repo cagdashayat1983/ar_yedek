@@ -1,0 +1,190 @@
+{
+  "@@locale": "tr",
+  "appTitle": "Hayatify AR Drawing",
+  "appVersion": "Sürüm 1.0.3 - Hayatify: AR Draw",
+  "favorites": "Beğendiklerim",
+  "noFavoritesTitle": "Henüz Bir Şey Beğenmedin",
+  "noFavoritesDesc": "Şablonlarda gezerken favori tasarımlarına kalp bırak!",
+
+  "welcomeTitle": "Hoş Geldin!",
+  "welcomeSubtitle": "Sihirli AR dünyasına katıl",
+  "googleLogin": "Google ile Devam Et",
+  "appleLogin": "Apple ile Devam Et",
+  "or": "Veya",
+  "guestLogin": "Misafir Olarak Başla",
+  "permissionError": "AR Çizim ve Sesli Komut için Kamera ve Mikrofon izni gerekli. 📸🎤",
+  "skip": "Geç",
+  "getStarted": "BAŞLA",
+
+  "historyTitle": "Çizim Geçmişi",
+  "noHistoryDesc": "Henüz bir çizim tamamlamadın.",
+  "historyCompleted": "Başarıyla tamamlandı",
+
+  "onb1Title": "Sihirli AR Çizim",
+  "onb1Desc": "Telefonunu bir bardağa veya standa sabitle, kameradan bak ve ekrandaki çizgileri kağıdına kolayca aktar.",
+  "onb2Title": "Adım Adım Öğren",
+  "onb2Desc": "Kolaydan zora yüzlerce şablon ile yeteneklerini geliştir. İstediğin kategoriyi seç ve sanatını konuştur.",
+  "onb3Title": "Galerini Şablona Çevir",
+  "onb3Desc": "Sadece bizim şablonlarımızla sınırlı kalma. Galerinden dilediğin fotoğrafı seç ve anında çizime başla.",
+  "onb4Title": "Çizdikçe Seviye Atla",
+  "onb4Desc": "Tamamladığın her çizimde XP kazan, seviyeleri geç ve 'Çaylak'lıktan usta bir 'Çizimci'ye dönüş!",
+
+  "navHome": "Ana Ekran",
+  "navLearn": "Öğren",
+  "navPro": "PRO",
+  "navProfile": "Hesabım",
+
+  "drawingSchool": "Çizim Okulu",
+  "drawingSchoolDesc": "Adım adım çizim yeteneğini geliştir ve XP kazanarak seviye atla.",
+  "freeAtelier": "Serbest Atölye",
+  "freeAtelierDesc": "Hazır şablonları keşfet veya kendi galerinden resimler çiz.",
+
+  "profileTitle": "PROFİLİM",
+  "rankLabel": "Rütbe",
+  "rankRookie": "Çaylak",
+  "rankArtist": "Çizimci",
+  "rankMaster": "Usta Çırak",
+  "rankExplorer": "Sanat Kaşifi",
+  "rankLegend": "Efsane Ressam",
+  "activities": "ETKİNLİKLER",
+  "drawYourPhoto": "Kendi Fotoğrafını Çiz",
+  "favorites": "Beğendiklerim",
+  "myHistory": "Çizim Geçmişim",
+  "support": "DESTEK",
+  "helpCenter": "Yardım Merkezi",
+  "aboutUs": "Hakkımızda",
+  "developmentLevel": "GELİŞİM SEVİYEM",
+  "congratsArtist": "Tebrikler, artık bir Çizimci'sin! 🎨",
+  "roadmapTitle": "GELİŞİM YOLCULUĞUM",
+
+  "xpToTarget": "Hedefe {xp} XP kaldı",
+  "@xpToTarget": {
+    "placeholders": {
+      "xp": { "type": "int" }
+    }
+  },
+  "totalXpDisplay": "{xp} TOPLAM XP",
+  "@totalXpDisplay": {
+    "placeholders": {
+      "xp": { "type": "int" }
+    }
+  },
+  "xpRequired": "{xp} XP GEREKLİ",
+  "@xpRequired": {
+    "placeholders": {
+      "xp": { "type": "int" }
+    }
+  },
+
+  "proTitle": "HAYATIFY PRO",
+  "proDesc": "Tüm kilitleri aç ve sınırsız çiz",
+  "proSubtitle": "Sınırları kaldır, sanatını özgür bırak!",
+  "feature1": "Tüm Şablonlara Erişim",
+  "feature2": "Reklamsız Deneyim",
+  "feature3": "Sınırsız Çizim Süresi",
+  "feature4": "Özel Kalem Araçları",
+  "buyButton": "PRO'YA GEÇ VE BAŞLA",
+  "cancelPolicy": "İstediğin zaman iptal edebilirsin.",
+  "congratsPro": "Tebrikler! Artık Hayatify PRO üyesisin! 👑",
+  "proMonthly": "AYLIK PLAN",
+  "proYearly": "YILLIK PLAN",
+  "freeTrial": "7 Gün Ücretsiz",
+  "proMember": "Pro Üyelik",
+  "proBenefits": "Pro Avantajları",
+  "proBenefitsList": "• Tüm şablonlara sınırsız erişim\n• Reklamsız deneyim\n• VIP Destek",
+
+  "sketchTemplate": "Karakalem Taslak",
+  "sketchDesc": "Resmini çizgisel şablona çevir",
+  "originalPhoto": "Orijinal Fotoğraf",
+  "originalDesc": "Resmi olduğu gibi ekrana yansıt",
+  "difficultyEasy": "BAŞLANGIÇ",
+  "difficultyMedium": "ORTA SEVİYE",
+  "difficultyHard": "İLERİ SEVİYE",
+  "resumeDrawing": "Devam Et?",
+  "resumeDesc": "{title} dersine kaldığın yerden devam etmek ister misin?",
+  "@resumeDesc": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "startOver": "Baştan",
+  "continueBtn": "Devam Et",
+  "startDrawing": "Çizmeye Başla",
+  "sort": "Sırala",
+  "newest": "En Yeni",
+  "oldest": "En Eski",
+  "popular": "En Popüler",
+  "drawYourOwn": "Kendi Fotoğrafını Çiz",
+  "doneLabel": "YAPILDI",
+  "drawAgain": "TEKRAR ÇİZ",
+  "earnXp": "+100 XP KAZAN",
+  "stepsLabel": "{count} Adım + Boyama",
+  "@stepsLabel": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "templatesCount": "{count} şablon",
+  "@templatesCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+
+  "animals": "Hayvanlar",
+  "cars": "Arabalar",
+  "anime": "Anime",
+  "cartoon": "Çizgi Film",
+  "flowers": "Çiçekler",
+  "human": "İnsanlar",
+  "nature": "Doğa",
+  "tattoo": "Dövme",
+  "profile": "Profil",
+
+  "historyTitle": "Çizim Geçmişi",
+  "noHistoryDesc": "Henüz bir çizim tamamlamadın.",
+  "historyCompleted": "Başarıyla tamamlandı",
+  "noFavoritesTitle": "Henüz Bir Şey Beğenmedin",
+  "noFavoritesDesc": "Şablonlarda gezerken favori tasarımlarına kalp bırak!",
+
+  "helpTitle": "Yardım ve Özellikler",
+  "magicAssistant": "SİHİRLİ ASİSTAN",
+  "voiceCommands": "Sesli Komutlar",
+  "voiceCommandsDesc": "Ellerini kağıttan ve kalemden hiç çekmeden uygulamayı yönet! Sadece şu komutları söylemen yeterli:",
+  "voiceCommandsList": "• \"İleri\" / \"Geri\"\n• \"Adım 4\"\n• \"Kilit\" / \"Aç\"\n• \"Saydamlık 50\"\n• \"Izgara 4\" / \"Izgara Kapat\"\n• \"Ayna\"",
+  
+  "toolsLabel": "ARAÇLAR",
+  "toolArMode": "AR Modu",
+  "toolArModeDesc": "Telefon kamerasını kullanarak şablonu kağıdın üzerine yansıtır.",
+  "toolLock": "Ekran Kilidi",
+  "toolLockDesc": "Çizim yaparken şablonun kaymasını engeller.",
+  "toolOpacity": "Saydamlık (Opaklık)",
+  "toolOpacityDesc": "Şablonun görünürlük oranını ayarlar.",
+  "toolGrid": "Izgara (Grid)",
+  "toolGridDesc": "Kağıt üzerindeki oranları tutturmak için kılavuz çizgiler ekler.",
+  "toolMirror": "Ayna Modu",
+  "toolMirrorDesc": "Şablonu yatay olarak ters çevirir.",
+  "toolFlash": "Flaş Desteği",
+  "toolFlashDesc": "Karanlık ortamlarda kağıdı daha net görmek için feneri açar.",
+
+  "contentTemplatesLabel": "İÇERİK & ŞABLONLAR",
+  "categoriesLabel": "Yüzlerce Kategori",
+  "categoriesDesc": "Hayvanlardan arabalara kadar yüzlerce çizim şablonunu keşfet.",
+  "progressXpLabel": "GELİŞİM & XP",
+  "howToEarnXp": "XP Nasıl Kazanılır?",
+  "howToEarnXpDesc": "Bir şablonu tamamladığında anında +100 XP kazanırsın.",
+  "levelSystem": "Seviye Sistemi",
+  "levelSystemDesc": "Kazandığın XP'ler birikir ve seviye atlamanı sağlar.",
+
+  "aboutSlogan": "Çizimlerine Hayat Ver!",
+  "ourStoryTitle": "Hikayemiz",
+  "ourStoryDesc": "Herkesin içinde bir sanatçı yattığına, ancak bazen sadece küçük bir rehberliğe ihtiyaç duyduğuna inanıyoruz. Hayatify, karmaşık çizim tekniklerini Artırılmış Gerçeklik (AR) ve yapay zeka ile birleştirerek, sanatı herkes için erişilebilir ve eğlenceli kılmak amacıyla doğdu.",
+  "ourMissionTitle": "Misyonumuz",
+  "ourMissionDesc": "Sadece bir uygulama değil, bir gelişim arkadaşı olmak istiyoruz. İster ilk defa eline kalem alan bir çaylak ol, ister yeteneklerini keskinleştiren bir usta; sesli komutlarımızla, yüzlerce şablonumuzla ve seviye sistemimizle senin sanat yolculuğuna eşlik etmek en büyük tutkumuz.",
+  "stayConnected": "Bağlantıda Kal",
+  "visitWebsite": "Web Sitemizi Ziyaret Et",
+  "followInstagram": "Instagram'da Bizi Takip Et",
+  "contactSupport": "Destek İçin Bize Ulaş",
+  "privacyPolicy": "Gizlilik Politikası",
+  "termsOfUse": "Kullanım Koşulları"
+}

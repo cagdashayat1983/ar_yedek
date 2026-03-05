@@ -1,20 +1,25 @@
 // lib/screens/tutorial_screen.dart
 
+import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui';
+
 import 'package:camera/camera.dart';
+import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:confetti/confetti.dart'; // 🎉 Konfeti
-import 'package:speech_to_text/speech_to_text.dart' as stt; // 🎤 Sesli Komut
-import 'dart:math' as math;
-import 'dart:ui';
+
+import '../services/speech_service.dart';
 
 class TutorialScreen extends StatefulWidget {
   final String title;
   final List<String> imagePaths;
   final List<CameraDescription> cameras;
   final int initialStep;
+  final bool isLocalFile;
 
   const TutorialScreen({
     super.key,
@@ -22,6 +27,7 @@ class TutorialScreen extends StatefulWidget {
     required this.imagePaths,
     required this.cameras,
     this.initialStep = 0,
+    this.isLocalFile = false,
   });
 
   @override
@@ -35,166 +41,450 @@ class _TutorialScreenState extends State<TutorialScreen>
   CameraController? controller;
   bool isCameraReady = false;
 
-  double _opacity = 0.5;
+  double _opacity = 0.55;
   bool isGhostLocked = false;
   bool isFlashOn = false;
   bool isFlipped = false;
   int _gridMode = 0;
 
-  // --- 🪄 EFEKT VE SES DEĞİŞKENLERİ ---
-  late AnimationController _scannerController;
+  // Serbest Kaydırma, Yakınlaştırma ve Döndürme (Pinch) için değişkenler
+  double _scale = 1.0;
+  double _baseScale = 1.0;
+  Offset _offset = Offset.zero;
+  double _rotationAngle = 0.0;
+  double _baseRotationAngle = 0.0;
+
   late ConfettiController _confettiController;
   bool _showCelebration = false;
-  int _earnedTotalXp = 0;
 
-  // --- 🎤 SESLİ KOMUT DEĞİŞKENLERİ ---
-  late stt.SpeechToText _speech;
+  // 🎤 Voice
   bool _isListening = false;
-  DateTime _lastCommandTime = DateTime.now(); // Üst üste atlamayı önlemek için
+  DateTime _lastCommandTime = DateTime.now();
+  String _lastProcessedText = "";
+  final SpeechService _speechService = SpeechService();
 
   @override
   void initState() {
     super.initState();
     _currentStep = widget.initialStep;
     _pageController = PageController(initialPage: widget.initialStep);
-    initializeCamera();
-
-    // ⚡ Lazer Animasyonu
-    _scannerController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    );
-    _startScanner();
-
-    // 🎉 Konfeti Ayarı
     _confettiController =
         ConfettiController(duration: const Duration(seconds: 3));
 
-    // 🎤 Sesli Komut Kurulumu
-    _speech = stt.SpeechToText();
-    _initSpeech();
-  }
-
-  // 🎤 Ses Asistanını Başlat
-  void _initSpeech() async {
-    bool available = await _speech.initialize(
-      onStatus: (status) => debugPrint('Ses Durumu: $status'),
-      onError: (errorNotification) =>
-          debugPrint('Ses Hatası: $errorNotification'),
-    );
-    if (available && mounted) {
-      setState(() => _isListening = true);
-      _startListening();
-    }
-  }
-
-  // 🎤 Dinlemeye Başla ve Kelimeleri Yakala (Şiveli Versiyon)
-  void _startListening() {
-    _speech.listen(
-      onResult: (result) {
-        String spokenWords = result.recognizedWords.toLowerCase();
-
-        // Komutlar arası en az 1.5 saniye bekle
-        if (DateTime.now().difference(_lastCommandTime).inMilliseconds > 1500) {
-          // İLERİ KOMUTLARI
-          if (spokenWords.contains("ileri") ||
-              spokenWords.contains("next") ||
-              spokenWords.contains("geç")) {
-            _nextStep();
-            _lastCommandTime = DateTime.now();
-            _resetListening(); // 🧹 HAFIZAYI TEMİZLE VE YENİDEN DİNLE
-          }
-          // GERİ KOMUTLARI (Back kelimesinin olası duyuluşları)
-          else if (spokenWords.contains("geri") ||
-              spokenWords.contains("back") ||
-              spokenWords.contains("bek") ||
-              spokenWords.contains("dön")) {
-            _prevStep();
-            _lastCommandTime = DateTime.now();
-            _resetListening(); // 🧹 HAFIZAYI TEMİZLE VE YENİDEN DİNLE
-          }
-        }
-      },
-      localeId: 'tr_TR', // Türkçe komutlara öncelik ver
-      cancelOnError: false,
-      partialResults: true,
-      listenMode: stt.ListenMode.dictation,
-    );
-  }
-
-  // 🧹 Mikrofonun hafızasını siler ve tertemiz baştan dinlemeye başlar
-  void _resetListening() async {
-    await _speech.stop(); // Dinlemeyi kes, eski kelimeleri unut
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        _startListening(); // Yeniden temiz bir sayfayla dinlemeye başla
-      }
+    initializeCamera().then((_) {
+      _checkPermissionsAndInitVoice();
     });
   }
 
-  void _startScanner() {
-    _scannerController.reset();
-    _scannerController.forward();
+  Future<void> _checkPermissionsAndInitVoice() async {
+    debugPrint("🎤 [PERMISSION] Mikrofon izni kontrol ediliyor...");
+    final status = await Permission.microphone.request();
+
+    if (!mounted) return;
+
+    if (status.isGranted) {
+      debugPrint("✅ [PERMISSION] Mikrofon izni verildi.");
+      _initVoiceControl();
+    } else {
+      debugPrint("❌ [PERMISSION] Mikrofon izni REDDEDİLDİ.");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Sesli komutlar için mikrofon izni gerekli."),
+        ),
+      );
+    }
+  }
+
+  Future<void> _initVoiceControl() async {
+    debugPrint("🚀 [SPEECH] Init...");
+    try {
+      final isReady = await _speechService.initSpeech();
+      if (!mounted) return;
+
+      if (isReady) {
+        await _speechService.startListening((spokenWords) {
+          _handleVoiceCommand(spokenWords);
+        });
+        if (mounted) setState(() => _isListening = true);
+      }
+    } catch (e) {
+      debugPrint("❌ [SPEECH] Init error: $e");
+    }
+  }
+
+  void _handleVoiceCommand(String spokenWords) {
+    final clean = spokenWords.toLowerCase().trim();
+    String newText = clean;
+    if (clean.startsWith(_lastProcessedText) && _lastProcessedText.isNotEmpty) {
+      newText = clean.substring(_lastProcessedText.length).trim();
+    } else {
+      newText = clean;
+    }
+
+    if (newText.isEmpty) return;
+
+    if (DateTime.now().difference(_lastCommandTime).inMilliseconds <= 1200) {
+      _lastProcessedText = clean;
+      return;
+    }
+
+    final t = newText
+        .replaceAll(RegExp(r"[^\w\sçğıöşü%\.]"), " ")
+        .replaceAll(RegExp(r"\s+"), " ")
+        .trim();
+
+    bool hasAny(List<String> keys) {
+      final words = t.split(" ");
+      return keys.any((k) {
+        if (k.contains(" ")) return t.contains(k);
+        return words.contains(k);
+      });
+    }
+
+    bool commandMatched = false;
+
+    final goStepKeys = <String>["step", "adım", "adıma", "git", "geç", "gec"];
+    if (hasAny(goStepKeys)) {
+      final step = _extractStepNumber(t);
+      if (step != null) {
+        _goToStep(step);
+        commandMatched = true;
+      }
+    }
+
+    if (!commandMatched) {
+      final opacityKeys = <String>[
+        "opacity",
+        "transparent",
+        "transparency",
+        "alpha",
+        "opaklık",
+        "opaklik",
+        "saydamlık",
+        "saydamlik",
+        "şeffaflık",
+        "seffaflik",
+        "görünürlük",
+        "gorunurluk"
+      ];
+      if (hasAny(opacityKeys)) {
+        final value = _extractOpacityValue(t);
+        if (value != null) {
+          _setOpacity(value);
+          commandMatched = true;
+        }
+      }
+    }
+
+    if (!commandMatched) {
+      final gridKeys = <String>[
+        "grid",
+        "ızgara",
+        "izgara",
+        "kılavuz",
+        "kilavuz"
+      ];
+      if (hasAny(gridKeys)) {
+        final grid = _extractGridValue(t);
+        if (grid != null) {
+          _setGrid(grid);
+        } else {
+          toggleGrid();
+        }
+        commandMatched = true;
+      }
+    }
+
+    if (!commandMatched) {
+      final lockKeys = <String>[
+        "lock",
+        "freeze",
+        "kilitle",
+        "kilit",
+        "sabitle",
+        "dondur"
+      ];
+      final unlockKeys = <String>[
+        "unlock",
+        "unfreeze",
+        "kilidi aç",
+        "kilidi ac",
+        "aç",
+        "ac",
+        "serbest",
+        "çöz",
+        "coz"
+      ];
+      final wantsLock = hasAny(lockKeys);
+      final wantsUnlock = hasAny(unlockKeys);
+
+      if (wantsLock != wantsUnlock) {
+        _setLock(wantsLock);
+        commandMatched = true;
+      }
+    }
+
+    if (!commandMatched) {
+      final flipKeys = <String>[
+        "flip",
+        "mirror",
+        "ayna",
+        "aynala",
+        "çevir",
+        "cevir",
+        "ters"
+      ];
+      if (hasAny(flipKeys)) {
+        _toggleFlip();
+        commandMatched = true;
+      }
+    }
+
+    if (!commandMatched) {
+      final nextKeys = <String>[
+        "next",
+        "go",
+        "forward",
+        "ileri",
+        "ilerle",
+        "sonraki",
+        "devam"
+      ];
+      final prevKeys = <String>[
+        "back",
+        "prev",
+        "previous",
+        "geri",
+        "geriye",
+        "önceki",
+        "onceki",
+        "dön",
+        "don"
+      ];
+
+      final isNext = hasAny(nextKeys);
+      final isPrev = hasAny(prevKeys);
+
+      if (isNext != isPrev) {
+        if (isNext) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _nextStep());
+        } else {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _prevStep());
+        }
+        commandMatched = true;
+      }
+    }
+
+    if (commandMatched) {
+      _lastProcessedText = clean;
+      _lastCommandTime = DateTime.now();
+      debugPrint("✅ KOMUT ÇALIŞTI. Yeni Hafıza: $_lastProcessedText");
+    }
+  }
+
+  void _setOpacity(double value01) {
+    final v = value01.clamp(0.1, 1.0);
+    HapticFeedback.selectionClick();
+    if (!mounted) return;
+    setState(() => _opacity = v);
+  }
+
+  void _setGrid(int grid) {
+    HapticFeedback.selectionClick();
+    if (!mounted) return;
+    setState(() => _gridMode = grid);
+  }
+
+  void _setLock(bool lock) {
+    HapticFeedback.selectionClick();
+    if (!mounted) return;
+    setState(() => isGhostLocked = lock);
+  }
+
+  void _toggleFlip() {
+    HapticFeedback.selectionClick();
+    if (!mounted) return;
+    setState(() => isFlipped = !isFlipped);
+  }
+
+  void _rotateImage() {
+    HapticFeedback.selectionClick();
+    if (!mounted) return;
+    setState(() {
+      _rotationAngle += math.pi / 2; // 90 derece
+    });
+  }
+
+  int? _extractStepNumber(String t) {
+    final m = RegExp(r'(\d{1,2})').firstMatch(t);
+    if (m != null) return int.tryParse(m.group(1)!);
+    final map = <String, int>{
+      "one": 1,
+      "two": 2,
+      "three": 3,
+      "four": 4,
+      "five": 5,
+      "six": 6,
+      "seven": 7,
+      "eight": 8,
+      "nine": 9,
+      "ten": 10,
+      "bir": 1,
+      "iki": 2,
+      "üç": 3,
+      "uc": 3,
+      "dört": 4,
+      "dort": 4,
+      "beş": 5,
+      "bes": 5,
+      "altı": 6,
+      "alti": 6,
+      "yedi": 7,
+      "sekiz": 8,
+      "dokuz": 9,
+      "on": 10,
+    };
+    for (final e in map.entries) {
+      if (t.contains(e.key)) return e.value;
+    }
+    return null;
+  }
+
+  double? _extractOpacityValue(String t) {
+    final textToNumber = <String, String>{
+      "on": "10",
+      "yirmi": "20",
+      "otuz": "30",
+      "kırk": "40",
+      "kirk": "40",
+      "elli": "50",
+      "altmış": "60",
+      "altmis": "60",
+      "yetmiş": "70",
+      "yetmis": "70",
+      "seksen": "80",
+      "doksan": "90",
+      "yüz": "100",
+      "yuz": "100",
+      "yarı": "50",
+      "yari": "50",
+      "yarım": "50",
+      "yarim": "50",
+      "ten": "10",
+      "twenty": "20",
+      "thirty": "30",
+      "forty": "40",
+      "fifty": "50",
+      "sixty": "60",
+      "seventy": "70",
+      "eighty": "80",
+      "ninety": "90",
+      "hundred": "100",
+      "half": "50"
+    };
+    String parsedText = t;
+    textToNumber.forEach((key, value) {
+      parsedText = parsedText.replaceAll(RegExp(r'\b' + key + r'\b'), value);
+    });
+    final hasPercentWord =
+        parsedText.contains("yüzde") || parsedText.contains("percent");
+    final percentMatch = RegExp(r'(\d{1,3})\s*%').firstMatch(parsedText);
+    if (percentMatch != null) {
+      final p = int.tryParse(percentMatch.group(1)!);
+      if (p == null) return null;
+      return (p / 100.0).clamp(0.1, 1.0);
+    }
+    if (hasPercentWord) {
+      final m = RegExp(r'(\d{1,3})').firstMatch(parsedText);
+      final p = m != null ? int.tryParse(m.group(1)!) : null;
+      if (p == null) return null;
+      return (p / 100.0).clamp(0.1, 1.0);
+    }
+    final m2 = RegExp(r'(\d+(\.\d+)?)').firstMatch(parsedText);
+    if (m2 != null) {
+      final raw = double.tryParse(m2.group(1)!);
+      if (raw == null) return null;
+      if (raw > 1.0) return (raw / 100.0).clamp(0.1, 1.0);
+      return raw.clamp(0.1, 1.0);
+    }
+    return null;
+  }
+
+  int? _extractGridValue(String t) {
+    if (t.contains("off") || t.contains("kapat") || t.contains("disable")) {
+      return 0;
+    }
+    final m = RegExp(r'(\d)').firstMatch(t);
+    final n = m != null ? int.tryParse(m.group(1)!) : null;
+    if (n == 3 || n == 4 || n == 5) return n;
+    if (t.contains("three") || t.contains("üç") || t.contains("uc")) return 3;
+    if (t.contains("four") || t.contains("dört") || t.contains("dort")) {
+      return 4;
+    }
+    if (t.contains("five") || t.contains("beş") || t.contains("bes")) return 5;
+    return null;
+  }
+
+  void _goToStep(int step1Based) {
+    final maxStep = widget.imagePaths.length;
+    final target = step1Based.clamp(1, maxStep) - 1;
+    HapticFeedback.lightImpact();
+    _pageController.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+    );
   }
 
   Future<void> initializeCamera() async {
     if (widget.cameras.isEmpty) return;
-    controller = CameraController(widget.cameras[0], ResolutionPreset.high,
-        enableAudio: false);
+    controller = CameraController(
+      widget.cameras[0],
+      ResolutionPreset.high,
+      enableAudio: false,
+    );
     try {
       await controller!.initialize();
       if (!mounted) return;
       setState(() => isCameraReady = true);
     } catch (e) {
-      debugPrint("Kamera hatası: $e");
+      debugPrint("Camera Error: $e");
+    }
+  }
+
+  Future<void> _toggleFlash() async {
+    if (controller == null) return;
+    HapticFeedback.selectionClick();
+    try {
+      final next = !isFlashOn;
+      await controller!.setFlashMode(next ? FlashMode.torch : FlashMode.off);
+      if (!mounted) return;
+      setState(() => isFlashOn = next);
+    } catch (e) {
+      debugPrint("Flash Error: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Flash desteklenmiyor.")),
+      );
     }
   }
 
   @override
   void dispose() {
-    _speech.stop(); // 🎤 Asistanı durdur
+    _speechService.stopListening();
     controller?.dispose();
     _pageController.dispose();
-    _scannerController.dispose();
     _confettiController.dispose();
     super.dispose();
-  }
-
-  Future<void> _saveProgress(int step) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (step < widget.imagePaths.length - 1) {
-      await prefs.setInt('progress_${widget.title}', step);
-    }
-  }
-
-  Future<void> _finishTutorial() async {
-    HapticFeedback.heavyImpact();
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setBool('completed_${widget.title}', true);
-    final List<String> history = prefs.getStringList('drawing_history') ?? [];
-    if (!history.contains(widget.title)) {
-      history.add(widget.title);
-      await prefs.setStringList('drawing_history', history);
-    }
-    await prefs.setInt('progress_${widget.title}', 0);
-
-    int currentXp = prefs.getInt('total_xp') ?? 0;
-    _earnedTotalXp = currentXp + 100;
-    await prefs.setInt('total_xp', _earnedTotalXp);
-
-    if (mounted) {
-      setState(() => _showCelebration = true);
-      _confettiController.play(); // 🎉 KONFETİYİ PATLAT!
-    }
   }
 
   void _nextStep() {
     HapticFeedback.lightImpact();
     if (_currentStep < widget.imagePaths.length - 1) {
-      _startScanner();
       _pageController.nextPage(
-          duration: const Duration(milliseconds: 300), curve: Curves.ease);
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+      );
     } else {
       _finishTutorial();
     }
@@ -203,23 +493,36 @@ class _TutorialScreenState extends State<TutorialScreen>
   void _prevStep() {
     HapticFeedback.lightImpact();
     if (_currentStep > 0) {
-      _startScanner();
       _pageController.previousPage(
-          duration: const Duration(milliseconds: 300), curve: Curves.ease);
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+      );
     }
+  }
+
+  Future<void> _finishTutorial() async {
+    HapticFeedback.heavyImpact();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('completed_${widget.title}', true);
+    final currentXp = prefs.getInt('total_xp') ?? 0;
+    await prefs.setInt('total_xp', currentXp + 100);
+    if (!mounted) return;
+    setState(() => _showCelebration = true);
+    _confettiController.play();
   }
 
   void toggleGrid() {
     HapticFeedback.selectionClick();
     setState(() {
-      if (_gridMode == 0)
+      if (_gridMode == 0) {
         _gridMode = 3;
-      else if (_gridMode == 3)
+      } else if (_gridMode == 3) {
         _gridMode = 4;
-      else if (_gridMode == 4)
+      } else if (_gridMode == 4) {
         _gridMode = 5;
-      else
+      } else {
         _gridMode = 0;
+      }
     });
   }
 
@@ -230,31 +533,69 @@ class _TutorialScreenState extends State<TutorialScreen>
       extendBodyBehindAppBar: true,
       appBar: _buildAppBar(),
       body: Stack(
-        alignment: Alignment.center, // Konfeti tam ortadan çıksın diye
+        alignment: Alignment.center,
         children: [
-          // 1. KAMERA
-          if (isCameraReady)
+          // 1. Kamera Önizlemesi
+          if (isCameraReady && controller != null)
             SizedBox.expand(child: CameraPreview(controller!))
           else
-            const Center(child: CircularProgressIndicator(color: Colors.white)),
+            const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
 
-          // 2. 🌟 YENİ: GERÇEK IŞIN KILICI SCANNER
-          _buildScannerEffect(),
+          // 2. Karartma Efekti
+          IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  radius: 1.0,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.35),
+                  ],
+                ),
+              ),
+            ),
+          ),
 
-          // 3. AR ÇİZİM REHBERİ
+          // 3. Yakınlaştırma, Kaydırma ve Ekrandan Döndürme Alanı
           _buildAROverlay(),
 
-          // 4. ALT KONTROLLER
+          // 4. SOL OK (Geri)
+          if (_currentStep > 0)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 10),
+                child: _sideArrowButton(
+                  icon: Icons.arrow_back_ios_new_rounded,
+                  onPressed: _prevStep,
+                ),
+              ),
+            ),
+
+          // 5. SAĞ OK (İleri) - SADECE son sayfaya gelene kadar görünür.
+          if (_currentStep < widget.imagePaths.length - 1)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: _sideArrowButton(
+                  icon: Icons.arrow_forward_ios_rounded,
+                  color: Colors.white,
+                  onPressed: _nextStep,
+                ),
+              ),
+            ),
+
+          // 6. En Alt Menü
           _buildBottomControls(),
 
-          // 5. KUTLAMA VE KONFETİ
+          // 7. Kutlama
           if (_showCelebration) _buildCelebrationOverlay(),
-
-          // 🎉 KONFETİ WIDGET'I (En üstte patlasın)
           ConfettiWidget(
             confettiController: _confettiController,
-            blastDirectionality:
-                BlastDirectionality.explosive, // Her yöne patlar
+            blastDirectionality: BlastDirectionality.explosive,
             shouldLoop: false,
             colors: const [
               Colors.green,
@@ -263,14 +604,364 @@ class _TutorialScreenState extends State<TutorialScreen>
               Colors.orange,
               Colors.purple
             ],
-            createParticlePath: drawStar, // Yıldız şeklinde konfetiler
+            createParticlePath: drawStar,
           ),
         ],
       ),
     );
   }
 
-  // 🎉 Konfetileri Yıldız Şeklinde Kestik
+  PreferredSizeWidget _buildAppBar() {
+    final stepText = "${_currentStep + 1}/${widget.imagePaths.length}";
+    final isLastStep = _currentStep == widget.imagePaths.length - 1;
+
+    return AppBar(
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            widget.title.toUpperCase(),
+            style: GoogleFonts.poppins(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
+              letterSpacing: 0.6,
+            ),
+          ),
+          const SizedBox(width: 10),
+          _pill(stepText),
+          const SizedBox(width: 8),
+          if (_isListening)
+            const Icon(Icons.mic_rounded, color: Colors.redAccent, size: 18),
+        ],
+      ),
+      backgroundColor: Colors.black.withOpacity(0.35),
+      elevation: 0,
+      centerTitle: true,
+      iconTheme: const IconThemeData(color: Colors.white),
+      actions: [
+        // ✅ YENİ: Sağ üst köşeye alınan zarif BİTİR (Yeşil Tik) Butonu
+        if (isLastStep)
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: IconButton(
+              icon: const Icon(Icons.check_circle_rounded,
+                  color: Colors.greenAccent, size: 28),
+              onPressed: _finishTutorial,
+            ),
+          )
+      ],
+    );
+  }
+
+  Widget _pill(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
+      ),
+      child: Text(
+        text,
+        style: GoogleFonts.poppins(
+          color: Colors.white.withOpacity(0.9),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _sideArrowButton(
+      {required IconData icon,
+      required VoidCallback onPressed,
+      Color color = Colors.white}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.5),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
+      ),
+      child: IconButton(
+        iconSize: 34,
+        padding: const EdgeInsets.all(12),
+        color: color,
+        icon: Icon(icon),
+        onPressed: onPressed,
+      ),
+    );
+  }
+
+  Widget _buildAROverlay() {
+    return IgnorePointer(
+      ignoring: isGhostLocked,
+      child: GestureDetector(
+        onScaleStart: (details) {
+          if (isGhostLocked) return;
+          _baseScale = _scale;
+          _baseRotationAngle = _rotationAngle;
+        },
+        onScaleUpdate: (details) {
+          if (isGhostLocked) return;
+          setState(() {
+            _scale = (_baseScale * details.scale).clamp(0.1, 10.0);
+            _rotationAngle = _baseRotationAngle + details.rotation;
+            _offset += details.focalPointDelta;
+          });
+        },
+        child: Container(
+          color: Colors.transparent,
+          width: MediaQuery.of(context).size.width,
+          height: MediaQuery.of(context).size.height,
+          child: Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..translate(_offset.dx, _offset.dy)
+              ..scale(_scale)
+              ..rotateZ(_rotationAngle)
+              ..rotateY(isFlipped ? math.pi : 0),
+            child: Stack(
+              children: [
+                PageView.builder(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: widget.imagePaths.length,
+                  onPageChanged: (index) =>
+                      setState(() => _currentStep = index),
+                  itemBuilder: (context, index) {
+                    return Opacity(
+                      opacity: _opacity,
+                      child: widget.isLocalFile
+                          ? Image.file(
+                              File(widget.imagePaths[index]),
+                              fit: BoxFit.contain,
+                            )
+                          : Image.asset(
+                              widget.imagePaths[index],
+                              fit: BoxFit.contain,
+                            ),
+                    );
+                  },
+                ),
+                if (_gridMode > 0)
+                  CustomPaint(
+                    size: Size.infinite,
+                    painter: GridPainter(gridCount: _gridMode),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomControls() {
+    return Positioned(
+      bottom: 0,
+      left: 10,
+      right: 10,
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.40),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.10)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _controlBtn(
+                            icon: isGhostLocked
+                                ? Icons.lock_rounded
+                                : Icons.lock_open_rounded,
+                            label: isGhostLocked ? "Locked" : "Lock",
+                            onPressed: () =>
+                                setState(() => isGhostLocked = !isGhostLocked),
+                            active: isGhostLocked,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: _controlBtn(
+                            icon: Icons.flip_rounded,
+                            label: "Flip",
+                            onPressed: () =>
+                                setState(() => isFlipped = !isFlipped),
+                            active: isFlipped,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: _controlBtn(
+                            icon: Icons.rotate_90_degrees_ccw_rounded,
+                            label: "Rotate",
+                            onPressed: _rotateImage,
+                            active: _rotationAngle != 0.0,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: _controlBtn(
+                            icon: Icons.grid_on_rounded,
+                            label: _gridMode == 0 ? "Grid" : "Grid $_gridMode",
+                            onPressed: toggleGrid,
+                            active: _gridMode != 0,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: _controlBtn(
+                            icon: isFlashOn
+                                ? Icons.flash_on_rounded
+                                : Icons.flash_off_rounded,
+                            label: "Flash",
+                            onPressed: _toggleFlash,
+                            active: isFlashOn,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Text("Opacity",
+                            style: GoogleFonts.poppins(
+                                color: Colors.white.withOpacity(0.85),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                                trackHeight: 3,
+                                thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 8),
+                                overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 16)),
+                            child: Slider(
+                              value: _opacity,
+                              min: 0.1,
+                              max: 1.0,
+                              activeColor: Colors.blueAccent,
+                              inactiveColor: Colors.white24,
+                              onChanged: (v) => setState(() => _opacity = v),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        _pill("${(_opacity * 100).round()}%"),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _controlBtn(
+      {required IconData icon,
+      required String label,
+      required VoidCallback onPressed,
+      bool active = false}) {
+    return ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+          elevation: 0,
+          backgroundColor: active
+              ? Colors.white.withOpacity(0.20)
+              : Colors.white.withOpacity(0.08),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(height: 4),
+          Text(label,
+              style:
+                  GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w600))
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCelebrationOverlay() {
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+      child: Container(
+        color: Colors.black.withOpacity(0.80),
+        child: Center(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+              decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: Colors.white.withOpacity(0.12))),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.stars_rounded,
+                      color: Colors.amber, size: 86),
+                  const SizedBox(height: 12),
+                  Text("AWESOME!",
+                      style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 30,
+                          letterSpacing: 0.5)),
+                  const SizedBox(height: 6),
+                  Text("+100 XP",
+                      style: GoogleFonts.poppins(
+                          color: Colors.white.withOpacity(0.85),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14)),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                      width: 180,
+                      child: ElevatedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: ElevatedButton.styleFrom(
+                              elevation: 0,
+                              backgroundColor: Colors.blueAccent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14))),
+                          child: Text("CLOSE",
+                              style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w800)))),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Path drawStar(Size size) {
     double degToRad(double deg) => deg * (math.pi / 180.0);
     const numberOfPoints = 5;
@@ -291,326 +982,6 @@ class _TutorialScreenState extends State<TutorialScreen>
     }
     path.close();
     return path;
-  }
-
-  // --- 🌟 GERÇEK IŞIN KILICI EFEKTİ ---
-  Widget _buildScannerEffect() {
-    return AnimatedBuilder(
-      animation: _scannerController,
-      builder: (context, child) {
-        double screenHeight = MediaQuery.of(context).size.height;
-        return Positioned(
-          top: screenHeight * _scannerController.value -
-              100, // Yukarıdan aşağı iner
-          left: 0,
-          right: 0,
-          child: Opacity(
-            opacity: (1 - _scannerController.value),
-            child: Container(
-              height: 4, // Çizgi inceldi (Işın kılıcı çekirdeği)
-              decoration: BoxDecoration(
-                color: Colors.white, // Bembeyaz çekirdek
-                boxShadow: [
-                  BoxShadow(
-                    color:
-                        Colors.cyanAccent.withOpacity(0.8), // Neon Mavi Parlama
-                    blurRadius: 20,
-                    spreadRadius: 10,
-                  ),
-                  BoxShadow(
-                    color: Colors.blueAccent.withOpacity(0.5), // Geniş Parlama
-                    blurRadius: 40,
-                    spreadRadius: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // --- 🏆 BUZLU CAM XP KUTLAMA EKRANI ---
-  Widget _buildCelebrationOverlay() {
-    return BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-      child: Container(
-        color: Colors.black.withOpacity(0.8),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.stars_rounded, color: Colors.amber, size: 100),
-              const SizedBox(height: 16),
-              Text("TEBRİKLER!",
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 32)),
-              const SizedBox(height: 8),
-              Text("+100 XP Kazandın",
-                  style: GoogleFonts.poppins(
-                      color: Colors.greenAccent,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 20)),
-              const SizedBox(height: 12),
-              Text("Toplam Puanın: $_earnedTotalXp",
-                  style: const TextStyle(color: Colors.white70)),
-              const SizedBox(height: 40),
-              SizedBox(
-                width: 200,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30)),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: Text("HARİKA!",
-                      style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.bold, fontSize: 16)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(widget.title.toUpperCase(),
-              style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                  letterSpacing: 1.2)),
-          const SizedBox(width: 8),
-          // 🎤 Mikrofon dinleniyorsa yanıp sönen ikon
-          if (_isListening)
-            const Icon(Icons.mic_rounded, color: Colors.redAccent, size: 18),
-        ],
-      ),
-      backgroundColor: Colors.black.withOpacity(0.4),
-      elevation: 0,
-      centerTitle: true,
-      iconTheme: const IconThemeData(color: Colors.white),
-      actions: [
-        Center(
-          child: Container(
-            margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-                color: Colors.white10,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white24)),
-            child: Text("${_currentStep + 1}/${widget.imagePaths.length}",
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12)),
-          ),
-        )
-      ],
-    );
-  }
-
-  Widget _buildAROverlay() {
-    return IgnorePointer(
-      ignoring: isGhostLocked,
-      child: InteractiveViewer(
-        minScale: 0.1,
-        maxScale: 5.0,
-        boundaryMargin: const EdgeInsets.all(double.infinity),
-        panEnabled: !isGhostLocked,
-        scaleEnabled: !isGhostLocked,
-        child: Center(
-          child: Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()..rotateY(isFlipped ? math.pi : 0),
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: Stack(
-                children: [
-                  PageView.builder(
-                    controller: _pageController,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: widget.imagePaths.length,
-                    onPageChanged: (index) {
-                      setState(() => _currentStep = index);
-                      _saveProgress(index);
-                    },
-                    itemBuilder: (context, index) {
-                      return Opacity(
-                        opacity: _opacity,
-                        child: Image.asset(widget.imagePaths[index],
-                            fit: BoxFit.contain),
-                      );
-                    },
-                  ),
-                  if (_gridMode > 0)
-                    CustomPaint(
-                        size: Size.infinite,
-                        painter: GridPainter(gridCount: _gridMode)),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomControls() {
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 30),
-        decoration: BoxDecoration(
-            gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [Colors.black.withOpacity(0.9), Colors.transparent])),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildToolBtn(
-                      icon: isGhostLocked
-                          ? Icons.lock_rounded
-                          : Icons.lock_open_rounded,
-                      label: "Kilit",
-                      isActive: isGhostLocked,
-                      onTap: () {
-                        HapticFeedback.mediumImpact();
-                        setState(() => isGhostLocked = !isGhostLocked);
-                      }),
-                  const SizedBox(width: 10),
-                  _buildToolBtn(
-                      icon: isFlashOn
-                          ? Icons.flash_on_rounded
-                          : Icons.flash_off_rounded,
-                      label: "Flaş",
-                      isActive: isFlashOn,
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        setState(() => isFlashOn = !isFlashOn);
-                        controller?.setFlashMode(
-                            isFlashOn ? FlashMode.torch : FlashMode.off);
-                      }),
-                  const SizedBox(width: 10),
-                  _buildToolBtn(
-                      icon: Icons.grid_on_rounded,
-                      label: "Izgara",
-                      isActive: _gridMode > 0,
-                      onTap: toggleGrid),
-                  const SizedBox(width: 10),
-                  _buildToolBtn(
-                      icon: Icons.flip_rounded,
-                      label: "Ayna",
-                      isActive: isFlipped,
-                      onTap: () => setState(() => isFlipped = !isFlipped)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 25),
-            Row(
-              children: [
-                const Icon(Icons.opacity_rounded,
-                    color: Colors.white70, size: 20),
-                Expanded(
-                    child: Slider(
-                        value: _opacity,
-                        min: 0.1,
-                        max: 1.0,
-                        activeColor: Colors.blueAccent,
-                        inactiveColor: Colors.white10,
-                        onChanged: (v) => setState(() => _opacity = v))),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _navBtn(
-                    icon: Icons.arrow_back_ios_new_rounded,
-                    label: "Geri",
-                    onPressed: _currentStep == 0 ? null : _prevStep),
-                _navBtn(
-                    icon: _currentStep == widget.imagePaths.length - 1
-                        ? Icons.done_all_rounded
-                        : Icons.arrow_forward_ios_rounded,
-                    label: _currentStep == widget.imagePaths.length - 1
-                        ? "BİTİR"
-                        : "İLERİ",
-                    onPressed: _nextStep,
-                    isPrimary: true),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _navBtn(
-      {required IconData icon,
-      required String label,
-      required VoidCallback? onPressed,
-      bool isPrimary = false}) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      label: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-      style: ElevatedButton.styleFrom(
-          backgroundColor: isPrimary
-              ? (label == "BİTİR" ? Colors.green : Colors.blueAccent)
-              : Colors.white10,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 15),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          elevation: 0),
-    );
-  }
-
-  Widget _buildToolBtn(
-      {required IconData icon,
-      required String label,
-      required bool isActive,
-      required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-            color: isActive ? Colors.blueAccent : Colors.white12,
-            borderRadius: BorderRadius.circular(12)),
-        child: Row(children: [
-          Icon(icon, size: 18, color: Colors.white),
-          const SizedBox(width: 8),
-          Text(label,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold))
-        ]),
-      ),
-    );
   }
 }
 
