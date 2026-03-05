@@ -1,63 +1,74 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-	<dict>
-		<key>CFBundleDevelopmentRegion</key>
-		<string>$(DEVELOPMENT_LANGUAGE)</string>
-		<key>CFBundleDisplayName</key>
-		<string>Hizli Tasarim</string>
-		<key>CFBundleExecutable</key>
-		<string>Runner</string>
-		<key>CFBundleIdentifier</key>
-		<string>com.hayatify.hizlitasarim</string>
-		<key>CFBundleInfoDictionaryVersion</key>
-		<string>6.0</string>
-		<key>CFBundleName</key>
-		<string>hizli_tasarim</string>
-		<key>CFBundlePackageType</key>
-		<string>APPL</string>
-		<key>CFBundleShortVersionString</key>
-		<string>$(FLUTTER_BUILD_NAME)</string>
-		<key>CFBundleSignature</key>
-		<string>????</string>
-		<key>CFBundleVersion</key>
-		<string>$(FLUTTER_BUILD_NUMBER)</string>
-		<key>LSRequiresIPhoneOS</key>
-		<true/>
-		<key>UILaunchStoryboardName</key>
-		<string>LaunchScreen</string>
-		<key>UIMainStoryboardFile</key>
-		<string>Main</string>
-		<key>NSCameraUsageDescription</key>
-		<string>AR (Artırılmış Gerçeklik) deneyimi sunabilmemiz ve fotoğraf çekebilmeniz için kameranıza erişim izni gereklidir.</string>
-		<key>NSPhotoLibraryUsageDescription</key>
-		<string>Profil fotoğrafı seçmek ve galerinizden resim alıp AR dünyasına ekleyebilmeniz için fotoğraf kütüphanesi erişimi gereklidir.</string>
-		<key>NSPhotoLibraryAddUsageDescription</key>
-		<string>AR görüntülerini galerinize kaydedebilmek için izin gereklidir.</string>
-		<key>NSMicrophoneUsageDescription</key>
-		<string>AR deneyimi sırasında ses kaydı yapabilmeniz ve sayfaları sesli komutla değiştirebilmeniz için mikrofon erişimi gereklidir.</string>
-		<key>NSLocationWhenInUseUsageDescription</key>
-		<string>AR objelerinin doğru yerleşimi ve zemin algılama için konum izni gereklidir.</string>
-		<key>NSSpeechRecognitionUsageDescription</key>
-		<string>Çizim yaparken sayfaları sesle değiştirebilmeniz için ses tanıma iznine ihtiyacımız var.</string>
-		<key>io.flutter.embedded_views_preview</key>
-		<true/>
-		<key>UIRequiredDeviceCapabilities</key>
-		<array>
-			<string>arm64</string>
-			<string>arkit</string>
-		</array>
-		<key>UISupportedInterfaceOrientations</key>
-		<array>
-			<string>UIInterfaceOrientationPortrait</string>
-		</array>
-		<key>CADisableMinimumFrameDurationOnPhone</key>
-		<true/>
-		<key>UIApplicationSupportsIndirectInputEvents</key>
-		<true/>
-		<key>UIStatusBarHidden</key>
-		<true/>
-		<key>UIViewControllerBasedStatusBarAppearance</key>
-		<false/>
-	</dict>
+    <dict>
+        <key>CFBundleDevelopmentRegion</key>
+        <string>$(DEVELOPMENT_LANGUAGE)</string>
+        
+        <key>CFBundleDisplayName</key>
+        <string>AR Draw Hayatify</string>
+        
+        <key>CFBundleExecutable</key>
+        <string>Runner</string>
+        
+        <key>CFBundleIdentifier</key>
+        <string>com.hayatify.ardraw</string>
+        
+        <key>CFBundleInfoDictionaryVersion</key>
+        <string>6.0</string>
+        
+        <key>CFBundleName</key>
+        <string>AR Draw Hayatify</string>
+        
+        <key>CFBundlePackageType</key>
+        <string>APPL</string>
+        <key>CFBundleShortVersionString</key>
+        <string>$(FLUTTER_BUILD_NAME)</string>
+        <key>CFBundleSignature</key>
+        <string>????</string>
+        <key>CFBundleVersion</key>
+        <string>$(FLUTTER_BUILD_NUMBER)</string>
+        <key>LSRequiresIPhoneOS</key>
+        <true/>
+        <key>UILaunchStoryboardName</key>
+        <string>LaunchScreen</string>
+        <key>UIMainStoryboardFile</key>
+        <string>Main</string>
+        
+        <key>NSCameraUsageDescription</key>
+        <string>AR (Artırılmış Gerçeklik) deneyimi sunabilmemiz ve fotoğraf çekebilmeniz için kameranıza erişim izni gereklidir.</string>
+        <key>NSPhotoLibraryUsageDescription</key>
+        <string>Profil fotoğrafı seçmek ve galerinizden resim alıp AR dünyasına ekleyebilmeniz için fotoğraf kütüphanesi erişimi gereklidir.</string>
+        <key>NSPhotoLibraryAddUsageDescription</key>
+        <string>AR görüntülerini galerinize kaydedebilmek için izin gereklidir.</string>
+        <key>NSMicrophoneUsageDescription</key>
+        <string>AR deneyimi sırasında ses kaydı yapabilmeniz ve sayfaları sesli komutla değiştirebilmeniz için mikrofon erişimi gereklidir.</string>
+        <key>NSLocationWhenInUseUsageDescription</key>
+        <string>AR objelerinin doğru yerleşimi ve zemin algılama için konum izni gereklidir.</string>
+        <key>NSSpeechRecognitionUsageDescription</key>
+        <string>Çizim yaparken sayfaları sesle değiştirebilmeniz için ses tanıma iznine ihtiyacımız var.</string>
+        
+        <key>io.flutter.embedded_views_preview</key>
+        <true/>
+        
+        <key>UIRequiredDeviceCapabilities</key>
+        <array>
+            <string>arm64</string>
+            <string>arkit</string>
+        </array>
+        
+        <key>UISupportedInterfaceOrientations</key>
+        <array>
+            <string>UIInterfaceOrientationPortrait</string>
+        </array>
+        
+        <key>CADisableMinimumFrameDurationOnPhone</key>
+        <true/>
+        <key>UIApplicationSupportsIndirectInputEvents</key>
+        <true/>
+        <key>UIStatusBarHidden</key>
+        <true/>
+        <key>UIViewControllerBasedStatusBarAppearance</key>
+        <false/>
+    </dict>
 </plist>

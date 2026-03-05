@@ -7,22 +7,29 @@ class SubscriptionService {
     // Test aşamasında logları görmek için
     await Purchases.setLogLevel(LogLevel.debug);
 
-    String apiKey;
+    // 🍎 iOS ÇÖKME ENGELLEYİCİ: Apple anahtarımız olmadığı için
+    // iOS'ta RevenueCat'i başlatmadan direkt çıkış yapıyoruz.
     if (Platform.isIOS) {
-      apiKey = 'test_eBlwszDXXCqtZEBOiqkWtXKUpep';
-    } else {
-      apiKey = 'test_eBlwszDXXCqtZEBOiqkWtXKUpep';
+      debugPrint("iOS'ta abonelik sistemi şimdilik atlanıyor (Apple Key yok).");
+      return;
     }
 
-    await Purchases.configure(PurchasesConfiguration(apiKey));
+    // 🤖 Android için çalışmaya devam eder
+    String apiKey = 'test_eBlwszDXXCqtZEBOiqkWtXKUpep';
+
+    try {
+      await Purchases.configure(PurchasesConfiguration(apiKey));
+    } catch (e) {
+      debugPrint("RevenueCat Başlatma Hatası: $e");
+    }
   }
 
   /// Kullanıcının aktif bir PRO aboneliği olup olmadığını kontrol eder.
-  /// Uygulama içindeki kilitleri açmak için bu metodu kullanabilirsin.
   static Future<bool> isProUser() async {
+    if (Platform.isIOS) return false; // iOS'ta şimdilik PRO kapalı
+
     try {
       CustomerInfo customerInfo = await Purchases.getCustomerInfo();
-      // "AR Draw Hayatify Pro" ifadesi RevenueCat panelindeki Entitlement ID ile birebir aynı olmalıdır.
       return customerInfo.entitlements.all["AR Draw Hayatify Pro"]?.isActive ??
           false;
     } catch (e) {
@@ -33,6 +40,8 @@ class SubscriptionService {
 
   /// Mevcut abonelik paketlerini getirmek için kullanılır.
   static Future<Offerings?> getOfferings() async {
+    if (Platform.isIOS) return null; // iOS'ta paket yok
+
     try {
       return await Purchases.getOfferings();
     } catch (e) {
