@@ -27,7 +27,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
 
   final GlobalKey _sceneKey = GlobalKey();
 
-  late final AnimationController _cubeController;
+  late final AnimationController _scanAnimController;
 
   ARKitController? arkitController;
   ARKitNode? imageNode;
@@ -55,6 +55,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
 
   bool _isTablet = false;
   bool _isTrackingNormal = true;
+  bool _surfaceReady = false;
 
   bool _isDragHitTestBusy = false;
   Offset? _queuedDragPoint;
@@ -67,6 +68,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
   String _lastTrackingToastKey = '';
 
   Timer? _toastTimer;
+  Timer? _surfaceProbeTimer;
   String _toastText = '';
 
   bool get _hasModel => imageNode != null;
@@ -74,7 +76,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
   @override
   void initState() {
     super.initState();
-    _cubeController = AnimationController(
+    _scanAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2200),
     )..repeat();
@@ -83,7 +85,8 @@ class _IosArSayfasiState extends State<IosArSayfasi>
   @override
   void dispose() {
     _toastTimer?.cancel();
-    _cubeController.dispose();
+    _surfaceProbeTimer?.cancel();
+    _scanAnimController.dispose();
     arkitController?.dispose();
     super.dispose();
   }
@@ -206,34 +209,35 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     return null;
   }
 
-  void _configureCallbacks(ARKitController controller) {
-    controller.onARTap = (List<ARKitTestResult> results) {
-      if (!_isTrackingNormal) {
-        _showToast('Zemin henüz net değil. Kamerayı biraz daha gezdir.');
-        return;
-      }
+  Future<ARKitTestResult?> _performBestHitTest(double x, double y) async {
+    final controller = arkitController;
+    if (controller == null) return null;
 
-      if (_hasModel) {
-        _showToast('Zaten eklendi. Temizle ile sıfırla.');
-        return;
-      }
+    const offsets = <Offset>[
+      Offset(0, 0),
+      Offset(-0.03, 0),
+      Offset(0.03, 0),
+      Offset(0, -0.04),
+      Offset(0, 0.04),
+      Offset(-0.05, -0.05),
+      Offset(0.05, -0.05),
+      Offset(-0.05, 0.05),
+      Offset(0.05, 0.05),
+    ];
 
-      if (_tapLocked || _placing) return;
+    for (final offset in offsets) {
+      final nx = (x + offset.dx).clamp(0.0, 1.0).toDouble();
+      final ny = (y + offset.dy).clamp(0.0, 1.0).toDouble();
 
-      if (results.isEmpty) {
-        _showToast('Yüzey bulunamadı. Kamerayı zemine doğru tut.');
-        return;
-      }
-
+      final results = await controller.performHitTest(x: nx, y: ny);
       final hit = _pickBestPlaneHit(results);
-      if (hit == null) {
-        _showToast('Düz bir zemin algılanamadı. Biraz daha tarat.');
-        return;
-      }
+      if (hit != null) return hit;
+    }
 
-      unawaited(_addPlaneImage(hit));
-    };
+    return null;
+  }
 
+  void _configureCallbacks(ARKitController controller) {
     controller.onCameraDidChangeTrackingState =
         (ARTrackingState trackingState, ARTrackingStateReason? reason) {
       final isNormal = trackingState == ARTrackingState.normal;
@@ -268,14 +272,78 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     };
 
     controller.onSessionInterruptionEnded = () {
-      _showToast('AR devam ediyor. Gerekirse zemini tekrar tara.');
+      _showToast('AR devam ediyor. Zemini tekrar tara.');
     };
+  }
+
+  void _startSurfaceProbeLoop() {
+    _surfaceProbeTimer?.cancel();
+    _surfaceProbeTimer = Timer.periodic(
+      const Duration(milliseconds: 350),
+      (_) async {
+        if (!mounted) return;
+        if (_hasModel) {
+          if (_surfaceReady) {
+            setState(() => _surfaceReady = false);
+          }
+          return;
+        }
+
+        if (!_isTrackingNormal) {
+          if (_surfaceReady) {
+            setState(() => _surfaceReady = false);
+          }
+          return;
+        }
+
+        final hit = await _performBestHitTest(0.5, 0.56);
+        if (!mounted) return;
+
+        final readyNow = hit != null;
+        if (readyNow != _surfaceReady) {
+          setState(() => _surfaceReady = readyNow);
+        }
+      },
+    );
   }
 
   void _onARKitViewCreated(ARKitController controller) {
     arkitController = controller;
     _configureCallbacks(controller);
-    _showToast('Kamerayı yavaşça zemine tutun ve dokunun.');
+    _startSurfaceProbeLoop();
+    _showToast('Kamerayı zemine tut ve ekrana dokun.');
+  }
+
+  Future<void> _tryPlaceAtGlobalPoint(Offset globalPoint) async {
+    if (_placing || _hasModel || _tapLocked) return;
+
+    final controller = arkitController;
+    if (controller == null) return;
+
+    if (!_isTrackingNormal) {
+      _showToast('Takip henüz hazır değil. Kamerayı biraz daha gezdir.');
+      return;
+    }
+
+    final renderBox =
+        _sceneKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) return;
+
+    final local = renderBox.globalToLocal(globalPoint);
+    final size = renderBox.size;
+
+    final nx = (local.dx / size.width).clamp(0.0, 1.0).toDouble();
+    final ny = (local.dy / size.height).clamp(0.0, 1.0).toDouble();
+
+    final hit = await _performBestHitTest(nx, ny) ??
+        await _performBestHitTest(0.5, 0.56);
+
+    if (hit == null) {
+      _showToast('Zemin bulunamadı. Kamerayı biraz daha aşağı tut.');
+      return;
+    }
+
+    await _addPlaneImage(hit);
   }
 
   Future<void> _addPlaneImage(ARKitTestResult hit) async {
@@ -292,7 +360,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       final col = hit.worldTransform.getColumn(3);
       _posX = col.x;
       _posZ = col.z;
-
       _scale = _defaultStartScale();
 
       final plane = ARKitPlane(
@@ -314,14 +381,15 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       );
 
       nodeName = _nodeId;
-
       await controller.add(imageNode!);
 
       if (mounted) {
-        setState(() {});
+        setState(() {
+          _surfaceReady = false;
+        });
       }
 
-      _showToast('✅ Resim zemine yerleşti!');
+      _showToast('✅ Resim zemine yapıştı!');
     } catch (e) {
       _showToast('❌ Yerleştirme hatası: $e');
     } finally {
@@ -354,8 +422,8 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     if (controller == null) return;
 
     final newMaterial = _buildMaterial();
-
     imageNode!.geometry?.materials.value = [newMaterial];
+
     await controller.update(
       nodeName!,
       node: imageNode!,
@@ -410,13 +478,10 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       final nx = (local.dx / size.width).clamp(0.0, 1.0).toDouble();
       final ny = (local.dy / size.height).clamp(0.0, 1.0).toDouble();
 
-      final results = await controller.performHitTest(x: nx, y: ny);
-      final hit = _pickBestPlaneHit(results);
-
+      final hit = await _performBestHitTest(nx, ny);
       if (hit == null) return;
 
       final col = hit.worldTransform.getColumn(3);
-
       _posX = col.x;
       _posZ = col.z;
 
@@ -447,9 +512,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     if (nodeName != null && controller != null) {
       try {
         await controller.remove(nodeName!);
-      } catch (_) {
-        // sessiz geç
-      }
+      } catch (_) {}
     }
 
     setState(() {
@@ -462,6 +525,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       _tiltMode = 0;
       _mirrored = false;
       _opacity = _defaultOpacity;
+      _surfaceReady = false;
     });
 
     _showToast('Temizlendi. Tekrar dokunabilirsin.');
@@ -517,7 +581,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     _showToast('$label şu an pasif.');
   }
 
-  Widget _buildScanningCubeOverlay() {
+  Widget _buildScanOverlay() {
     return IgnorePointer(
       child: Center(
         child: Padding(
@@ -526,39 +590,36 @@ class _IosArSayfasiState extends State<IosArSayfasi>
             mainAxisSize: MainAxisSize.min,
             children: [
               AnimatedBuilder(
-                animation: _cubeController,
+                animation: _scanAnimController,
                 builder: (context, child) {
-                  final t = _cubeController.value;
-                  final pulse = 0.92 + (math.sin(t * math.pi * 2) * 0.08);
-                  final rise = math.sin(t * math.pi * 2) * 5.0;
-
-                  return Transform.translate(
-                    offset: Offset(0, rise),
-                    child: Transform.rotate(
-                      angle: t * math.pi * 2,
-                      child: Transform.scale(
-                        scale: pulse,
-                        child: CustomPaint(
-                          size: const Size(92, 92),
-                          painter: ScanningCubePainter(progress: t),
-                        ),
+                  final t = _scanAnimController.value;
+                  return Transform.rotate(
+                    angle: t * math.pi * 2,
+                    child: CustomPaint(
+                      size: const Size(96, 96),
+                      painter: ScanCubePainter(
+                        active: _surfaceReady && _isTrackingNormal,
+                        progress: t,
                       ),
                     ),
                   );
                 },
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               Text(
-                _isTrackingNormal ? 'Dokun ve yerleştir' : 'Zemin aranıyor...',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black54,
-                      blurRadius: 10,
-                    ),
+                !_isTrackingNormal
+                    ? 'Zemin aranıyor...'
+                    : _surfaceReady
+                        ? 'Dokun ve yerleştir'
+                        : 'Kamerayı biraz daha zemine indir',
+                style: TextStyle(
+                  color: _surfaceReady && _isTrackingNormal
+                      ? Colors.cyanAccent
+                      : Colors.white70,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  shadows: const [
+                    Shadow(color: Colors.black54, blurRadius: 10),
                   ],
                 ),
               ),
@@ -566,6 +627,27 @@ class _IosArSayfasiState extends State<IosArSayfasi>
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildGlassPanel({required Widget child, EdgeInsets? padding}) {
+    return Container(
+      padding: padding ?? const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111111).withOpacity(0.72),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.10),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.22),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: child,
     );
   }
 
@@ -578,26 +660,31 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          SizedBox.expand(
+          Container(
             key: _sceneKey,
+            color: Colors.black,
             child: ARKitSceneView(
               onARKitViewCreated: _onARKitViewCreated,
               planeDetection: ARPlaneDetection.horizontal,
-              enableTapRecognizer: true,
+              enableTapRecognizer: false,
               showFeaturePoints: kDebugMode,
               showStatistics: kDebugMode,
             ),
           ),
-          if (!_hasModel) _buildScanningCubeOverlay(),
-          if (_hasModel)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onScaleStart: _onScaleStart,
-                onScaleUpdate: _onScaleUpdate,
-                child: const ColoredBox(color: Colors.transparent),
-              ),
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTapUp: (details) {
+                if (!_hasModel) {
+                  unawaited(_tryPlaceAtGlobalPoint(details.globalPosition));
+                }
+              },
+              onScaleStart: _hasModel ? _onScaleStart : null,
+              onScaleUpdate: _hasModel ? _onScaleUpdate : null,
+              child: const SizedBox.expand(),
             ),
+          ),
+          if (!_hasModel) _buildScanOverlay(),
           if (_gridMode > 0)
             Positioned.fill(
               child: IgnorePointer(
@@ -608,195 +695,209 @@ class _IosArSayfasiState extends State<IosArSayfasi>
             ),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.45),
-                  borderRadius: BorderRadius.circular(26),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.12),
-                  ),
-                ),
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+              child: _buildGlassPanel(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 child: Row(
                   children: [
                     IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      icon: const Icon(Icons.arrow_back_ios_new,
+                          color: Colors.white, size: 22),
                     ),
-                    TextButton.icon(
-                      onPressed: () {},
-                      icon: Icon(
-                        Icons.apple,
-                        color: _isTrackingNormal
-                            ? Colors.cyanAccent
-                            : Colors.orangeAccent,
-                      ),
-                      label: Text(
-                        _isTrackingNormal
-                            ? 'PRO AR MODU (iOS)'
-                            : 'ZEMİN TARAMA...',
-                        style: TextStyle(
-                          color: _isTrackingNormal
-                              ? Colors.cyanAccent
-                              : Colors.orangeAccent,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    if (_toastText.isNotEmpty)
-                      Expanded(
-                        child: Text(
-                          _toastText,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.apple,
+                            size: 18,
+                            color: _isTrackingNormal
+                                ? Colors.cyanAccent
+                                : Colors.orangeAccent,
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              _isTrackingNormal
+                                  ? 'PRO AR MODU (iOS)'
+                                  : 'ZEMİN TARAMA...',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: _isTrackingNormal
+                                    ? Colors.cyanAccent
+                                    : Colors.orangeAccent,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    const Spacer(),
+                    ),
                     IconButton(
                       onPressed: () => unawaited(_clearAll()),
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.white,
-                      ),
+                      icon: const Icon(Icons.delete_outline,
+                          color: Colors.white, size: 24),
                     ),
                   ],
                 ),
               ),
             ),
           ),
+          if (_toastText.isNotEmpty)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 78,
+              left: 24,
+              right: 24,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.68),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                    ),
+                    child: Text(
+                      _toastText,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
-            left: 10,
-            right: 10,
-            bottom: 18,
+            left: 12,
+            right: 12,
+            bottom: 16,
             child: SafeArea(
               top: false,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.55),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.08),
-                      ),
-                    ),
+                  _buildGlassPanel(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     child: Row(
                       children: [
-                        const Icon(Icons.opacity,
-                            color: Colors.white, size: 20),
+                        Icon(
+                          Icons.opacity_rounded,
+                          color: Colors.white.withOpacity(0.9),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
                         Expanded(
-                          child: Slider(
-                            value: _opacity,
-                            min: 0.1,
-                            max: 1.0,
-                            activeColor: Colors.cyanAccent,
-                            inactiveColor: Colors.white24,
-                            onChanged: (v) => unawaited(_updateOpacity(v)),
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              trackHeight: 4,
+                              thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 10),
+                              overlayShape: const RoundSliderOverlayShape(
+                                  overlayRadius: 18),
+                            ),
+                            child: Slider(
+                              value: _opacity,
+                              min: 0.1,
+                              max: 1.0,
+                              activeColor: Colors.cyanAccent,
+                              inactiveColor: Colors.white24,
+                              onChanged: (v) => unawaited(_updateOpacity(v)),
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Container(
+                  const SizedBox(height: 10),
+                  _buildGlassPanel(
                     padding: const EdgeInsets.symmetric(
-                      vertical: 14,
-                      horizontal: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.60),
-                      borderRadius: BorderRadius.circular(35),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.12),
-                      ),
-                    ),
+                        horizontal: 12, vertical: 12),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
                       child: Row(
                         children: [
-                          _btn(
-                            Icons.videocam_outlined,
-                            'Kayıt',
-                            false,
-                            Colors.redAccent,
-                            () => _comingSoon('Kayıt'),
+                          _toolButton(
+                            icon: Icons.videocam_outlined,
+                            label: 'Kayıt',
+                            active: false,
+                            activeColor: Colors.redAccent,
+                            onTap: () => _comingSoon('Kayıt'),
                           ),
-                          const SizedBox(width: 8),
-                          _btn(
-                            _tapLocked ? Icons.lock : Icons.lock_open,
-                            'Kilit',
-                            _tapLocked,
-                            Colors.redAccent,
-                            () => setState(() => _tapLocked = !_tapLocked),
+                          const SizedBox(width: 10),
+                          _toolButton(
+                            icon: _tapLocked ? Icons.lock : Icons.lock_open,
+                            label: 'Kilit',
+                            active: _tapLocked,
+                            activeColor: Colors.redAccent,
+                            onTap: () =>
+                                setState(() => _tapLocked = !_tapLocked),
                           ),
-                          const SizedBox(width: 8),
-                          _btn(
-                            Icons.view_in_ar,
-                            _tiltLabel,
-                            _tiltMode > 0,
-                            Colors.orangeAccent,
-                            _toggleTilt,
+                          const SizedBox(width: 10),
+                          _toolButton(
+                            icon: Icons.view_in_ar_outlined,
+                            label: _tiltLabel,
+                            active: _tiltMode > 0,
+                            activeColor: Colors.orangeAccent,
+                            onTap: _toggleTilt,
                           ),
-                          const SizedBox(width: 8),
-                          _btn(
-                            Icons.flip,
-                            'Ayna',
-                            _mirrored,
-                            Colors.blueAccent,
-                            _toggleMirror,
+                          const SizedBox(width: 10),
+                          _toolButton(
+                            icon: Icons.flip,
+                            label: 'Ayna',
+                            active: _mirrored,
+                            activeColor: Colors.lightBlueAccent,
+                            onTap: _toggleMirror,
                           ),
-                          const SizedBox(width: 8),
-                          _btn(
-                            Icons.rotate_90_degrees_cw,
-                            '+90°',
-                            false,
-                            Colors.white,
-                            _rotPlus90,
+                          const SizedBox(width: 10),
+                          _toolButton(
+                            icon: Icons.rotate_90_degrees_cw,
+                            label: '+90°',
+                            active: false,
+                            activeColor: Colors.white,
+                            onTap: _rotPlus90,
                           ),
-                          const SizedBox(width: 8),
-                          _btn(
-                            Icons.arrow_downward,
-                            'Y-',
-                            true,
-                            Colors.cyanAccent,
-                            () => unawaited(_changeLift(-0.01)),
+                          const SizedBox(width: 10),
+                          _toolButton(
+                            icon: Icons.vertical_align_bottom,
+                            label: 'Y-',
+                            active: true,
+                            activeColor: Colors.cyanAccent,
+                            onTap: () => unawaited(_changeLift(-0.01)),
                           ),
-                          const SizedBox(width: 8),
-                          _btn(
-                            Icons.arrow_upward,
-                            'Y+',
-                            true,
-                            Colors.cyanAccent,
-                            () => unawaited(_changeLift(0.01)),
+                          const SizedBox(width: 10),
+                          _toolButton(
+                            icon: Icons.vertical_align_top,
+                            label: 'Y+',
+                            active: true,
+                            activeColor: Colors.cyanAccent,
+                            onTap: () => unawaited(_changeLift(0.01)),
                           ),
-                          const SizedBox(width: 8),
-                          _btn(
-                            Icons.grid_on,
-                            _gridMode == 0 ? 'Izgara' : '${_gridMode}x',
-                            _gridMode > 0,
-                            Colors.greenAccent,
-                            _toggleGrid,
+                          const SizedBox(width: 10),
+                          _toolButton(
+                            icon: Icons.grid_view_rounded,
+                            label: _gridMode == 0 ? 'Izgara' : '${_gridMode}x',
+                            active: _gridMode > 0,
+                            activeColor: Colors.greenAccent,
+                            onTap: _toggleGrid,
                           ),
-                          const SizedBox(width: 8),
-                          _btn(
-                            Icons.flash_on,
-                            'Flaş',
-                            false,
-                            Colors.amber,
-                            () => _comingSoon('Flaş'),
+                          const SizedBox(width: 10),
+                          _toolButton(
+                            icon: Icons.flash_on_rounded,
+                            label: 'Flaş',
+                            active: false,
+                            activeColor: Colors.amber,
+                            onTap: () => _comingSoon('Flaş'),
                           ),
                         ],
                       ),
@@ -811,45 +912,62 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     );
   }
 
-  Widget _btn(
-    IconData icon,
-    String label,
-    bool isActive,
-    Color activeColor,
-    VoidCallback onTap,
-  ) {
+  Widget _toolButton({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required Color activeColor,
+    required VoidCallback onTap,
+  }) {
+    final Color bgColor =
+        active ? activeColor.withOpacity(0.18) : Colors.white.withOpacity(0.06);
+
+    final Color borderColor =
+        active ? activeColor.withOpacity(0.55) : Colors.white.withOpacity(0.10);
+
+    final Color iconColor = active ? activeColor : Colors.white;
+    final Color textColor = active ? activeColor : Colors.white70;
+
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isActive
-                  ? activeColor.withOpacity(0.85)
-                  : Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isActive
-                    ? activeColor.withOpacity(0.45)
-                    : Colors.white.withOpacity(0.10),
-                width: 1.2,
+      child: SizedBox(
+        width: 68,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              height: 54,
+              width: 54,
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: borderColor, width: 1.2),
+                boxShadow: active
+                    ? [
+                        BoxShadow(
+                          color: activeColor.withOpacity(0.20),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        )
+                      ]
+                    : null,
+              ),
+              child: Icon(icon, color: iconColor, size: 24),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 11,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isActive ? activeColor : Colors.white60,
-              fontSize: 8.5,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -863,7 +981,7 @@ class GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.3)
+      ..color = Colors.cyanAccent.withOpacity(0.25)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
@@ -882,89 +1000,88 @@ class GridPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-class ScanningCubePainter extends CustomPainter {
+class ScanCubePainter extends CustomPainter {
+  final bool active;
   final double progress;
 
-  ScanningCubePainter({required this.progress});
+  ScanCubePainter({
+    required this.active,
+    required this.progress,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final glowPaint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.14)
-      ..style = PaintingStyle.fill;
+    final mainColor = active ? Colors.cyanAccent : Colors.white70;
+    final glowColor = active
+        ? Colors.cyanAccent.withOpacity(0.16)
+        : Colors.white.withOpacity(0.08);
 
-    final linePaint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.95)
+    final glowPaint = Paint()..color = glowColor;
+    final strokePaint = Paint()
+      ..color = mainColor.withOpacity(0.95)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.2;
 
-    final softLinePaint = Paint()
-      ..color = Colors.white.withOpacity(0.35)
+    final softPaint = Paint()
+      ..color = mainColor.withOpacity(0.28)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
 
+    final pulse = 0.94 + (math.sin(progress * math.pi * 2) * 0.05);
+
+    final rect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: size.width * 0.86 * pulse,
+      height: size.height * 0.86 * pulse,
+    );
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(24)),
+      glowPaint,
+    );
+
     final cx = size.width / 2;
     final cy = size.height / 2;
-
-    final face = size.width * 0.34;
-    final depth = size.width * 0.16;
+    final face = size.width * 0.30;
+    final depth = size.width * 0.14;
 
     final front = Rect.fromCenter(
-      center: Offset(cx - depth * 0.35, cy + depth * 0.15),
+      center: Offset(cx - depth * 0.2, cy + depth * 0.16),
       width: face,
       height: face,
     );
 
     final back = front.shift(Offset(depth, -depth));
 
-    final pulse = 0.4 + (math.sin(progress * math.pi * 2) + 1) * 0.15;
-
-    final frontR = RRect.fromRectAndRadius(front, const Radius.circular(10));
-    final backR = RRect.fromRectAndRadius(back, const Radius.circular(10));
-
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: Offset(cx, cy),
-          width: size.width * (0.88 + pulse * 0.08),
-          height: size.height * (0.88 + pulse * 0.08),
-        ),
-        const Radius.circular(24),
-      ),
-      glowPaint,
+      RRect.fromRectAndRadius(back, const Radius.circular(10)),
+      softPaint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(front, const Radius.circular(10)),
+      strokePaint,
     );
 
-    canvas.drawRRect(backR, softLinePaint);
-    canvas.drawRRect(frontR, linePaint);
+    canvas.drawLine(front.topLeft, back.topLeft, strokePaint);
+    canvas.drawLine(front.topRight, back.topRight, strokePaint);
+    canvas.drawLine(front.bottomLeft, back.bottomLeft, strokePaint);
+    canvas.drawLine(front.bottomRight, back.bottomRight, strokePaint);
 
-    canvas.drawLine(front.topLeft, back.topLeft, linePaint);
-    canvas.drawLine(front.topRight, back.topRight, linePaint);
-    canvas.drawLine(front.bottomLeft, back.bottomLeft, linePaint);
-    canvas.drawLine(front.bottomRight, back.bottomRight, linePaint);
+    final scanPaint = Paint()
+      ..color = mainColor.withOpacity(active ? 0.90 : 0.45)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
 
-    final fillPaint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.10 + pulse * 0.10)
-      ..style = PaintingStyle.fill;
-
-    final path = Path()
-      ..moveTo(front.topLeft.dx, front.topLeft.dy)
-      ..lineTo(front.topRight.dx, front.topRight.dy)
-      ..lineTo(back.topRight.dx, back.topRight.dy)
-      ..lineTo(back.topLeft.dx, back.topLeft.dy)
-      ..close();
-
-    canvas.drawPath(path, fillPaint);
-
-    final dotPaint = Paint()
-      ..color = Colors.white.withOpacity(0.9)
-      ..style = PaintingStyle.fill;
-
-    final dotX = lerpDouble(front.left + 8, front.right - 8, progress)!;
-    canvas.drawCircle(Offset(dotX, front.top - 8), 2.8, dotPaint);
+    final lineY = lerpDouble(front.top + 6, front.bottom - 6, progress)!;
+    canvas.drawLine(
+      Offset(front.left + 6, lineY),
+      Offset(front.right - 6, lineY),
+      scanPaint,
+    );
   }
 
   @override
-  bool shouldRepaint(covariant ScanningCubePainter oldDelegate) {
-    return oldDelegate.progress != progress;
+  bool shouldRepaint(covariant ScanCubePainter oldDelegate) {
+    return oldDelegate.active != active || oldDelegate.progress != progress;
   }
 }
