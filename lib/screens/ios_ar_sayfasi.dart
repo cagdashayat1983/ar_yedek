@@ -64,7 +64,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   String _lastTrackingToastKey = '';
 
   Timer? _toastTimer;
-  String _toastText = "";
+  String _toastText = '';
 
   bool get _hasModel => imageNode != null;
 
@@ -80,11 +80,11 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   String get _tiltLabel {
     switch (_tiltMode) {
       case 1:
-        return "15°";
+        return '15°';
       case 2:
-        return "30°";
+        return '30°';
       default:
-        return "Eğim";
+        return 'Eğim';
     }
   }
 
@@ -94,7 +94,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     _toastTimer?.cancel();
     _toastTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
-      setState(() => _toastText = "");
+      setState(() => _toastText = '');
     });
   }
 
@@ -144,6 +144,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         _planeWidth = longestEdgeMeters * _imageAspectRatio;
       }
 
+      image.dispose();
       _imageMetricsReady = true;
     } catch (_) {
       _imageAspectRatio = 1.0;
@@ -192,39 +193,28 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     return null;
   }
 
-  Future<void> _addCoachingOverlayIfPossible() async {
-    final controller = arkitController;
-    if (controller == null) return;
-
-    try {
-      await controller.addCoachingOverlay(CoachingOverlayGoal.horizontalPlane);
-    } catch (_) {
-      // Sessiz geç
-    }
-  }
-
   void _configureCallbacks(ARKitController controller) {
     controller.onARTap = (List<ARKitTestResult> results) {
       if (!_isTrackingNormal) {
-        _showToast("Zemin henüz net değil. Kamerayı biraz daha gezdir.");
+        _showToast('Zemin henüz net değil. Kamerayı biraz daha gezdir.');
         return;
       }
 
       if (_hasModel) {
-        _showToast("Zaten eklendi. Temizle ile sıfırla.");
+        _showToast('Zaten eklendi. Temizle ile sıfırla.');
         return;
       }
 
       if (_tapLocked || _placing) return;
 
       if (results.isEmpty) {
-        _showToast("Yüzey bulunamadı. Kamerayı zemine doğru tut.");
+        _showToast('Yüzey bulunamadı. Kamerayı zemine doğru tut.');
         return;
       }
 
       final hit = _pickBestPlaneHit(results);
       if (hit == null) {
-        _showToast("Düz bir zemin algılanamadı. Biraz daha tarat.");
+        _showToast('Düz bir zemin algılanamadı. Biraz daha tarat.');
         return;
       }
 
@@ -250,36 +240,29 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
       final reasonText = reason?.name;
       if (reasonText != null && reasonText.isNotEmpty) {
-        _showToast("AR izleme zayıf: $reasonText");
+        _showToast('AR izleme zayıf: $reasonText');
       } else {
-        _showToast("AR izleme zayıf. Kamerayı zeminde gezdir.");
+        _showToast('AR izleme zayıf. Kamerayı zeminde gezdir.');
       }
     };
 
     controller.onError = (String? error) {
-      _showToast("AR hatası: ${error ?? 'Bilinmeyen hata'}");
+      _showToast('AR hatası: ${error ?? 'Bilinmeyen hata'}');
     };
 
     controller.onSessionWasInterrupted = () {
-      _showToast("AR oturumu durakladı.");
+      _showToast('AR oturumu durakladı.');
     };
 
     controller.onSessionInterruptionEnded = () {
-      _showToast("AR devam ediyor. Gerekirse zemini tekrar tara.");
-    };
-
-    controller.coachingOverlayViewDidDeactivate = () {
-      if (!_hasModel) {
-        _showToast("Kamerayı zemine tut ve dokun.");
-      }
+      _showToast('AR devam ediyor. Gerekirse zemini tekrar tara.');
     };
   }
 
   void _onARKitViewCreated(ARKitController controller) {
     arkitController = controller;
     _configureCallbacks(controller);
-    unawaited(_addCoachingOverlayIfPossible());
-    _showToast("Kamerayı yavaşça zemine tutun ve dokunun.");
+    _showToast('Kamerayı yavaşça zemine tutun ve dokunun.');
   }
 
   Future<void> _addPlaneImage(ARKitTestResult hit) async {
@@ -325,9 +308,9 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
         setState(() {});
       }
 
-      _showToast("✅ Resim zemine yerleşti!");
+      _showToast('✅ Resim zemine yerleşti!');
     } catch (e) {
-      _showToast("❌ Yerleştirme hatası: $e");
+      _showToast('❌ Yerleştirme hatası: $e');
     } finally {
       _placing = false;
     }
@@ -432,7 +415,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
 
       await _updateNodeTransform();
     } catch (_) {
-      // Sessiz geç
+      // sessiz geç
     } finally {
       _isDragHitTestBusy = false;
 
@@ -452,7 +435,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       try {
         await controller.remove(nodeName!);
       } catch (_) {
-        // Sessiz geç
+        // sessiz geç
       }
     }
 
@@ -468,7 +451,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
       _opacity = _defaultOpacity;
     });
 
-    _showToast("Temizlendi. Tekrar dokunabilirsin.");
+    _showToast('Temizlendi. Tekrar dokunabilirsin.');
   }
 
   void _toggleGrid() {
@@ -518,7 +501,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   }
 
   void _comingSoon(String label) {
-    _showToast("$label şu an pasif. Stabil AR yerleşimi hazır.");
+    _showToast('$label şu an pasif.');
   }
 
   @override
@@ -528,10 +511,12 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
+        clipBehavior: Clip.none,
         children: [
           Positioned.fill(
-            child: SizedBox.expand(
+            child: Container(
               key: _sceneKey,
+              color: Colors.black,
               child: ARKitSceneView(
                 onARKitViewCreated: _onARKitViewCreated,
                 planeDetection: ARPlaneDetection.horizontal,
@@ -547,89 +532,81 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
                 behavior: HitTestBehavior.opaque,
                 onScaleStart: _onScaleStart,
                 onScaleUpdate: _onScaleUpdate,
-                child: Container(color: Colors.transparent),
+                child: const ColoredBox(color: Colors.transparent),
               ),
             ),
           if (_gridMode > 0)
             Positioned.fill(
               child: IgnorePointer(
-                child: RepaintBoundary(
-                  child: CustomPaint(
-                    painter: GridPainter(gridCount: _gridMode),
-                  ),
+                child: CustomPaint(
+                  painter: GridPainter(gridCount: _gridMode),
                 ),
               ),
             ),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(26),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.12),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(26),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.12),
+                    TextButton.icon(
+                      onPressed: () {},
+                      icon: Icon(
+                        Icons.apple,
+                        color: _isTrackingNormal
+                            ? Colors.cyanAccent
+                            : Colors.orangeAccent,
+                      ),
+                      label: Text(
+                        _isTrackingNormal
+                            ? 'PRO AR MODU (iOS)'
+                            : 'ZEMİN TARAMA...',
+                        style: TextStyle(
+                          color: _isTrackingNormal
+                              ? Colors.cyanAccent
+                              : Colors.orangeAccent,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon:
-                              const Icon(Icons.arrow_back, color: Colors.white),
-                        ),
-                        TextButton.icon(
-                          onPressed: () {},
-                          icon: Icon(
-                            Icons.apple,
-                            color: _isTrackingNormal
-                                ? Colors.cyanAccent
-                                : Colors.orangeAccent,
-                          ),
-                          label: Text(
-                            _isTrackingNormal
-                                ? "PRO AR MODU (iOS)"
-                                : "ZEMİN TARAMA...",
-                            style: TextStyle(
-                              color: _isTrackingNormal
-                                  ? Colors.cyanAccent
-                                  : Colors.orangeAccent,
-                              fontWeight: FontWeight.bold,
-                            ),
+                    const Spacer(),
+                    if (_toastText.isNotEmpty)
+                      Expanded(
+                        child: Text(
+                          _toastText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
                           ),
                         ),
-                        const Spacer(),
-                        if (_toastText.isNotEmpty)
-                          Flexible(
-                            child: Text(
-                              _toastText,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        const Spacer(),
-                        IconButton(
-                          onPressed: () => unawaited(_clearAll()),
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
+                      ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => unawaited(_clearAll()),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.white,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),
@@ -638,136 +615,132 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
             left: 10,
             right: 10,
             bottom: 18,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(20),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.08),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.opacity,
+                            color: Colors.white, size: 20),
+                        Expanded(
+                          child: Slider(
+                            value: _opacity,
+                            min: 0.1,
+                            max: 1.0,
+                            activeColor: Colors.cyanAccent,
+                            inactiveColor: Colors.white24,
+                            onChanged: (v) => unawaited(_updateOpacity(v)),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.opacity, color: Colors.white, size: 20),
-                      Expanded(
-                        child: Slider(
-                          value: _opacity,
-                          min: 0.1,
-                          max: 1.0,
-                          activeColor: Colors.cyanAccent,
-                          inactiveColor: Colors.white24,
-                          onChanged: (v) => unawaited(_updateOpacity(v)),
-                        ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.60),
+                      borderRadius: BorderRadius.circular(35),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.12),
                       ),
-                    ],
-                  ),
-                ),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(35),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 14,
-                        horizontal: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.black.withValues(alpha: 0.70),
-                            Colors.black.withValues(alpha: 0.50),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(35),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.15),
-                        ),
-                      ),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        child: Row(
-                          children: [
-                            _btn(
-                              Icons.videocam_outlined,
-                              "Kayıt",
-                              false,
-                              Colors.redAccent,
-                              () => _comingSoon("Kayıt"),
-                            ),
-                            const SizedBox(width: 8),
-                            _btn(
-                              _tapLocked ? Icons.lock : Icons.lock_open,
-                              "Kilit",
-                              _tapLocked,
-                              Colors.redAccent,
-                              () => setState(() => _tapLocked = !_tapLocked),
-                            ),
-                            const SizedBox(width: 8),
-                            _btn(
-                              Icons.view_in_ar,
-                              _tiltLabel,
-                              _tiltMode > 0,
-                              Colors.orangeAccent,
-                              _toggleTilt,
-                            ),
-                            const SizedBox(width: 8),
-                            _btn(
-                              Icons.flip,
-                              "Ayna",
-                              _mirrored,
-                              Colors.blueAccent,
-                              _toggleMirror,
-                            ),
-                            const SizedBox(width: 8),
-                            _btn(
-                              Icons.rotate_90_degrees_cw,
-                              "+90°",
-                              false,
-                              Colors.white,
-                              _rotPlus90,
-                            ),
-                            const SizedBox(width: 8),
-                            _btn(
-                              Icons.arrow_downward,
-                              "Y-",
-                              true,
-                              Colors.cyanAccent,
-                              () => unawaited(_changeLift(-0.01)),
-                            ),
-                            const SizedBox(width: 8),
-                            _btn(
-                              Icons.arrow_upward,
-                              "Y+",
-                              true,
-                              Colors.cyanAccent,
-                              () => unawaited(_changeLift(0.01)),
-                            ),
-                            const SizedBox(width: 8),
-                            _btn(
-                              Icons.grid_on,
-                              _gridMode == 0 ? "Izgara" : "${_gridMode}x",
-                              _gridMode > 0,
-                              Colors.greenAccent,
-                              _toggleGrid,
-                            ),
-                            const SizedBox(width: 8),
-                            _btn(
-                              Icons.flash_on,
-                              "Flaş",
-                              false,
-                              Colors.amber,
-                              () => _comingSoon("Flaş"),
-                            ),
-                          ],
-                        ),
+                    ),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: [
+                          _btn(
+                            Icons.videocam_outlined,
+                            'Kayıt',
+                            false,
+                            Colors.redAccent,
+                            () => _comingSoon('Kayıt'),
+                          ),
+                          const SizedBox(width: 8),
+                          _btn(
+                            _tapLocked ? Icons.lock : Icons.lock_open,
+                            'Kilit',
+                            _tapLocked,
+                            Colors.redAccent,
+                            () => setState(() => _tapLocked = !_tapLocked),
+                          ),
+                          const SizedBox(width: 8),
+                          _btn(
+                            Icons.view_in_ar,
+                            _tiltLabel,
+                            _tiltMode > 0,
+                            Colors.orangeAccent,
+                            _toggleTilt,
+                          ),
+                          const SizedBox(width: 8),
+                          _btn(
+                            Icons.flip,
+                            'Ayna',
+                            _mirrored,
+                            Colors.blueAccent,
+                            _toggleMirror,
+                          ),
+                          const SizedBox(width: 8),
+                          _btn(
+                            Icons.rotate_90_degrees_cw,
+                            '+90°',
+                            false,
+                            Colors.white,
+                            _rotPlus90,
+                          ),
+                          const SizedBox(width: 8),
+                          _btn(
+                            Icons.arrow_downward,
+                            'Y-',
+                            true,
+                            Colors.cyanAccent,
+                            () => unawaited(_changeLift(-0.01)),
+                          ),
+                          const SizedBox(width: 8),
+                          _btn(
+                            Icons.arrow_upward,
+                            'Y+',
+                            true,
+                            Colors.cyanAccent,
+                            () => unawaited(_changeLift(0.01)),
+                          ),
+                          const SizedBox(width: 8),
+                          _btn(
+                            Icons.grid_on,
+                            _gridMode == 0 ? 'Izgara' : '${_gridMode}x',
+                            _gridMode > 0,
+                            Colors.greenAccent,
+                            _toggleGrid,
+                          ),
+                          const SizedBox(width: 8),
+                          _btn(
+                            Icons.flash_on,
+                            'Flaş',
+                            false,
+                            Colors.amber,
+                            () => _comingSoon('Flaş'),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -785,50 +758,32 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     return GestureDetector(
       onTap: onTap,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           AnimatedContainer(
             duration: const Duration(milliseconds: 220),
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              gradient: isActive
-                  ? LinearGradient(
-                      colors: [
-                        activeColor,
-                        activeColor.withValues(alpha: 0.6),
-                      ],
-                    )
-                  : LinearGradient(
-                      colors: [
-                        Colors.white.withValues(alpha: 0.12),
-                        Colors.white.withValues(alpha: 0.06),
-                      ],
-                    ),
+              color: isActive
+                  ? activeColor.withOpacity(0.85)
+                  : Colors.white.withOpacity(0.08),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: isActive
-                    ? activeColor.withValues(alpha: 0.5)
-                    : Colors.white.withValues(alpha: 0.10),
-                width: 1.5,
+                    ? activeColor.withOpacity(0.45)
+                    : Colors.white.withOpacity(0.10),
+                width: 1.2,
               ),
-              boxShadow: isActive
-                  ? [
-                      BoxShadow(
-                        color: activeColor.withValues(alpha: 0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      )
-                    ]
-                  : [],
             ),
-            child: Icon(icon, color: Colors.white, size: 22),
+            child: Icon(icon, color: Colors.white, size: 20),
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: TextStyle(
-              color: isActive ? activeColor : Colors.white54,
-              fontSize: 9,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              color: isActive ? activeColor : Colors.white60,
+              fontSize: 8.5,
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
             ),
           ),
         ],
@@ -845,7 +800,7 @@ class GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.cyanAccent.withValues(alpha: 0.3)
+      ..color = Colors.cyanAccent.withOpacity(0.3)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
