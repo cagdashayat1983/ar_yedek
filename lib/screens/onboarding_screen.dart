@@ -23,19 +23,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // ✅ Sadece görsel ve renk verilerini tutuyoruz, metinler l10n'dan gelecek
   final List<Map<String, dynamic>> _pages = [
     {
-      "image": "assets/icons/onb_robot.png",
+      "image": "assets/icons/onb_robot.webp",
       "color": const Color(0xFFE91E63),
     },
     {
-      "image": "assets/icons/onb_kapibara.png",
+      "image": "assets/icons/onb_kapibara.webp",
       "color": const Color(0xFF9C27B0),
     },
     {
-      "image": "assets/icons/onb_lollipop.png",
+      "image": "assets/icons/onb_lollipop.webp",
       "color": const Color(0xFF42A5F5),
     },
     {
-      "image": "assets/icons/onb_anime.png",
+      "image": "assets/icons/onb_anime.webp",
       "color": const Color(0xFFFFCA28),
     }
   ];

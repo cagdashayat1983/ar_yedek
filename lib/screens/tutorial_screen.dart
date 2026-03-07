@@ -47,7 +47,6 @@ class _TutorialScreenState extends State<TutorialScreen>
   bool isFlipped = false;
   int _gridMode = 0;
 
-  // Serbest Kaydırma, Yakınlaştırma ve Döndürme (Pinch) için değişkenler
   double _scale = 1.0;
   double _baseScale = 1.0;
   Offset _offset = Offset.zero;
@@ -57,7 +56,6 @@ class _TutorialScreenState extends State<TutorialScreen>
   late ConfettiController _confettiController;
   bool _showCelebration = false;
 
-  // 🎤 Voice
   bool _isListening = false;
   DateTime _lastCommandTime = DateTime.now();
   String _lastProcessedText = "";
@@ -76,13 +74,53 @@ class _TutorialScreenState extends State<TutorialScreen>
     });
   }
 
-  // 🍎 İŞTE SADECE BURASI DEĞİŞTİ: iOS için hem Mikrofon hem Speech izni aynı anda isteniyor.
+  bool _isNetworkPath(String path) {
+    final p = path.toLowerCase();
+    return p.startsWith('http://') || p.startsWith('https://');
+  }
+
+  Widget _buildStepImage(String path) {
+    if (widget.isLocalFile) {
+      return Image.file(
+        File(path),
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const Center(
+          child: Icon(Icons.broken_image_rounded, color: Colors.white70),
+        ),
+      );
+    }
+
+    if (_isNetworkPath(path)) {
+      return Image.network(
+        path,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          );
+        },
+        errorBuilder: (_, __, ___) => const Center(
+          child: Icon(Icons.broken_image_rounded, color: Colors.white70),
+        ),
+      );
+    }
+
+    return Image.asset(
+      path,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => const Center(
+        child: Icon(Icons.broken_image_rounded, color: Colors.white70),
+      ),
+    );
+  }
+
   Future<void> _checkPermissionsAndInitVoice() async {
     debugPrint("🎤 [PERMISSION] İzinler kontrol ediliyor...");
 
     Map<Permission, PermissionStatus> statuses = await [
       Permission.microphone,
-      Permission.speech, // Bunu eklemezsek iOS sağır taklidi yapabilir
+      Permission.speech,
     ].request();
 
     if (!mounted) return;
@@ -318,7 +356,7 @@ class _TutorialScreenState extends State<TutorialScreen>
     HapticFeedback.selectionClick();
     if (!mounted) return;
     setState(() {
-      _rotationAngle += math.pi / 2; // 90 derece
+      _rotationAngle += math.pi / 2;
     });
   }
 
@@ -542,15 +580,12 @@ class _TutorialScreenState extends State<TutorialScreen>
       body: Stack(
         alignment: Alignment.center,
         children: [
-          // 1. Kamera Önizlemesi
           if (isCameraReady && controller != null)
             SizedBox.expand(child: CameraPreview(controller!))
           else
             const Center(
               child: CircularProgressIndicator(color: Colors.white),
             ),
-
-          // 2. Karartma Efekti
           IgnorePointer(
             child: Container(
               decoration: BoxDecoration(
@@ -564,11 +599,7 @@ class _TutorialScreenState extends State<TutorialScreen>
               ),
             ),
           ),
-
-          // 3. Yakınlaştırma, Kaydırma ve Ekrandan Döndürme Alanı
           _buildAROverlay(),
-
-          // 4. SOL OK (Geri)
           if (_currentStep > 0)
             Align(
               alignment: Alignment.centerLeft,
@@ -580,8 +611,6 @@ class _TutorialScreenState extends State<TutorialScreen>
                 ),
               ),
             ),
-
-          // 5. SAĞ OK (İleri) - SADECE son sayfaya gelene kadar görünür.
           if (_currentStep < widget.imagePaths.length - 1)
             Align(
               alignment: Alignment.centerRight,
@@ -594,11 +623,7 @@ class _TutorialScreenState extends State<TutorialScreen>
                 ),
               ),
             ),
-
-          // 6. En Alt Menü
           _buildBottomControls(),
-
-          // 7. Kutlama
           if (_showCelebration) _buildCelebrationOverlay(),
           ConfettiWidget(
             confettiController: _confettiController,
@@ -647,7 +672,6 @@ class _TutorialScreenState extends State<TutorialScreen>
       centerTitle: true,
       iconTheme: const IconThemeData(color: Colors.white),
       actions: [
-        // ✅ YENİ: Sağ üst köşeye alınan zarif BİTİR (Yeşil Tik) Butonu
         if (isLastStep)
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
@@ -680,10 +704,11 @@ class _TutorialScreenState extends State<TutorialScreen>
     );
   }
 
-  Widget _sideArrowButton(
-      {required IconData icon,
-      required VoidCallback onPressed,
-      Color color = Colors.white}) {
+  Widget _sideArrowButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    Color color = Colors.white,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.5),
@@ -739,15 +764,7 @@ class _TutorialScreenState extends State<TutorialScreen>
                   itemBuilder: (context, index) {
                     return Opacity(
                       opacity: _opacity,
-                      child: widget.isLocalFile
-                          ? Image.file(
-                              File(widget.imagePaths[index]),
-                              fit: BoxFit.contain,
-                            )
-                          : Image.asset(
-                              widget.imagePaths[index],
-                              fit: BoxFit.contain,
-                            ),
+                      child: _buildStepImage(widget.imagePaths[index]),
                     );
                   },
                 ),
@@ -846,20 +863,26 @@ class _TutorialScreenState extends State<TutorialScreen>
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Text("Opacity",
-                            style: GoogleFonts.poppins(
-                                color: Colors.white.withOpacity(0.85),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700)),
+                        Text(
+                          "Opacity",
+                          style: GoogleFonts.poppins(
+                            color: Colors.white.withOpacity(0.85),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: SliderTheme(
                             data: SliderTheme.of(context).copyWith(
-                                trackHeight: 3,
-                                thumbShape: const RoundSliderThumbShape(
-                                    enabledThumbRadius: 8),
-                                overlayShape: const RoundSliderOverlayShape(
-                                    overlayRadius: 16)),
+                              trackHeight: 3,
+                              thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 8,
+                              ),
+                              overlayShape: const RoundSliderOverlayShape(
+                                overlayRadius: 16,
+                              ),
+                            ),
                             child: Slider(
                               value: _opacity,
                               min: 0.1,
@@ -884,30 +907,37 @@ class _TutorialScreenState extends State<TutorialScreen>
     );
   }
 
-  Widget _controlBtn(
-      {required IconData icon,
-      required String label,
-      required VoidCallback onPressed,
-      bool active = false}) {
+  Widget _controlBtn({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    bool active = false,
+  }) {
     return ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
-          elevation: 0,
-          backgroundColor: active
-              ? Colors.white.withOpacity(0.20)
-              : Colors.white.withOpacity(0.08),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+        elevation: 0,
+        backgroundColor: active
+            ? Colors.white.withOpacity(0.20)
+            : Colors.white.withOpacity(0.08),
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 20),
           const SizedBox(height: 4),
-          Text(label,
-              style:
-                  GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w600))
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+            ),
+          )
         ],
       ),
     );
@@ -924,42 +954,59 @@ class _TutorialScreenState extends State<TutorialScreen>
             child: Container(
               padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
               decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: Colors.white.withOpacity(0.12))),
+                color: Colors.white.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: Colors.white.withOpacity(0.12)),
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.stars_rounded,
-                      color: Colors.amber, size: 86),
+                  const Icon(
+                    Icons.stars_rounded,
+                    color: Colors.amber,
+                    size: 86,
+                  ),
                   const SizedBox(height: 12),
-                  Text("AWESOME!",
-                      style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 30,
-                          letterSpacing: 0.5)),
+                  Text(
+                    "AWESOME!",
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 30,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
                   const SizedBox(height: 6),
-                  Text("+100 XP",
-                      style: GoogleFonts.poppins(
-                          color: Colors.white.withOpacity(0.85),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14)),
+                  Text(
+                    "+100 XP",
+                    style: GoogleFonts.poppins(
+                      color: Colors.white.withOpacity(0.85),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
                   const SizedBox(height: 18),
                   SizedBox(
-                      width: 180,
-                      child: ElevatedButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: ElevatedButton.styleFrom(
-                              elevation: 0,
-                              backgroundColor: Colors.blueAccent,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14))),
-                          child: Text("CLOSE",
-                              style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w800)))),
+                    width: 180,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        elevation: 0,
+                        backgroundColor: Colors.blueAccent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: Text(
+                        "CLOSE",
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -981,11 +1028,14 @@ class _TutorialScreenState extends State<TutorialScreen>
     final fullAngle = degToRad(360);
     path.moveTo(size.width, halfWidth);
     for (double step = 0; step < fullAngle; step += degreesPerStep) {
-      path.lineTo(halfWidth + externalRadius * math.cos(step),
-          halfWidth + externalRadius * math.sin(step));
       path.lineTo(
-          halfWidth + internalRadius * math.cos(step + halfDegreesPerStep),
-          halfWidth + internalRadius * math.sin(step + halfDegreesPerStep));
+        halfWidth + externalRadius * math.cos(step),
+        halfWidth + externalRadius * math.sin(step),
+      );
+      path.lineTo(
+        halfWidth + internalRadius * math.cos(step + halfDegreesPerStep),
+        halfWidth + internalRadius * math.sin(step + halfDegreesPerStep),
+      );
     }
     path.close();
     return path;
@@ -995,17 +1045,25 @@ class _TutorialScreenState extends State<TutorialScreen>
 class GridPainter extends CustomPainter {
   final int gridCount;
   GridPainter({required this.gridCount});
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = Colors.white24
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
+
     for (int i = 1; i < gridCount; i++) {
-      canvas.drawLine(Offset(size.width / gridCount * i, 0),
-          Offset(size.width / gridCount * i, size.height), paint);
-      canvas.drawLine(Offset(0, size.height / gridCount * i),
-          Offset(size.width, size.height / gridCount * i), paint);
+      canvas.drawLine(
+        Offset(size.width / gridCount * i, 0),
+        Offset(size.width / gridCount * i, size.height),
+        paint,
+      );
+      canvas.drawLine(
+        Offset(0, size.height / gridCount * i),
+        Offset(size.width, size.height / gridCount * i),
+        paint,
+      );
     }
   }
 

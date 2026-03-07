@@ -114,13 +114,13 @@ class SpeechService {
       debugPrint('❌ [SPEECH] listen exception: $e');
       _isListening = false;
       await _safeCancel();
-      _scheduleRestart(delayMs: 1500);
+      _scheduleRestart(delayMs: 250);
     } finally {
       _starting = false;
     }
   }
 
-  void _scheduleRestart({int delayMs = 1500}) {
+  void _scheduleRestart({int delayMs = 250}) {
     if (!_isAvailable) return;
     if (!_wantListen) return;
     if (_onFinalResult == null) return;

@@ -7,14 +7,14 @@ class SubscriptionService {
     // Test aşamasında logları görmek için
     await Purchases.setLogLevel(LogLevel.debug);
 
-    // 🍎 iOS ÇÖKME ENGELLEYİCİ: Apple anahtarımız olmadığı için
-    // iOS'ta RevenueCat'i başlatmadan direkt çıkış yapıyoruz.
+    // 🍎 iOS ÇÖKME ENGELLEYİCİ
     if (Platform.isIOS) {
       debugPrint("iOS'ta abonelik sistemi şimdilik atlanıyor (Apple Key yok).");
       return;
     }
 
     // 🤖 Android için çalışmaya devam eder
+    // ⚠️ NOT: Bu senin 'Test Store' anahtarın. Gerçek satış için RevenueCat'teki 'Google' anahtarını kullanmalısın.
     String apiKey = 'test_eBlwszDXXCqtZEBOiqkWtXKUpep';
 
     try {
@@ -24,12 +24,31 @@ class SubscriptionService {
     }
   }
 
+  /// 🔄 Satın Almaları Geri Yükle (Android için Hayati)
+  static Future<bool> restorePurchases() async {
+    if (Platform.isIOS) return false;
+
+    try {
+      CustomerInfo customerInfo = await Purchases.restorePurchases();
+      // 'AR Draw Hayatify Pro' senin RevenueCat'teki Entitlement ID'n ile aynı olmalı!
+      bool isActive =
+          customerInfo.entitlements.all["AR Draw Hayatify Pro"]?.isActive ??
+              false;
+      return isActive;
+    } catch (e) {
+      debugPrint("Geri yükleme hatası: $e");
+      return false;
+    }
+  }
+
   /// Kullanıcının aktif bir PRO aboneliği olup olmadığını kontrol eder.
   static Future<bool> isProUser() async {
-    if (Platform.isIOS) return false; // iOS'ta şimdilik PRO kapalı
+    if (Platform.isIOS) return false;
 
     try {
       CustomerInfo customerInfo = await Purchases.getCustomerInfo();
+      // ⚠️ DİKKAT: RevenueCat panelindeki Entitlement ID'nin tam olarak
+      // "AR Draw Hayatify Pro" olduğundan emin ol (Boşluklara dikkat!)
       return customerInfo.entitlements.all["AR Draw Hayatify Pro"]?.isActive ??
           false;
     } catch (e) {
@@ -40,7 +59,7 @@ class SubscriptionService {
 
   /// Mevcut abonelik paketlerini getirmek için kullanılır.
   static Future<Offerings?> getOfferings() async {
-    if (Platform.isIOS) return null; // iOS'ta paket yok
+    if (Platform.isIOS) return null;
 
     try {
       return await Purchases.getOfferings();

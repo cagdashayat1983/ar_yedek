@@ -4,10 +4,10 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:camera/camera.dart';
-import 'package:google_fonts/google_fonts.dart'; // ✅ Şık font eklendi
+import 'package:google_fonts/google_fonts.dart';
 import 'package:ar_flutter_plugin_plus/ar_flutter_plugin_plus.dart';
 import 'package:ar_flutter_plugin_plus/datatypes/config_planedetection.dart';
 import 'package:ar_flutter_plugin_plus/datatypes/hittest_result_types.dart';
@@ -26,7 +26,10 @@ import 'tutorial_screen.dart';
 class ARMiniTestScreen extends StatefulWidget {
   final String glbAssetPath;
 
-  const ARMiniTestScreen({super.key, required this.glbAssetPath});
+  const ARMiniTestScreen({
+    super.key,
+    required this.glbAssetPath,
+  });
 
   @override
   State<ARMiniTestScreen> createState() => _ARMiniTestScreenState();
@@ -41,21 +44,13 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   ARNode? _activeNode;
 
   bool _placing = false;
-  int _activePointers = 0;
-  bool get _isMultiTouch => _activePointers > 1;
-
-  DateTime _lastGestureAt = DateTime.fromMillisecondsSinceEpoch(0);
-  static const Duration _tapCooldownAfterGesture = Duration(milliseconds: 550);
-
   bool _tapLocked = false;
   bool _mirrored = false;
-  bool _showPlanes = false;
-  bool _flashOn = false;
-  bool _isRecording = false;
+  bool _showPlanes = true;
 
   int _tiltMode = 0;
 
-  double _scale = 1.0;
+  double _scale = 0.48;
   double _rotYDeg = 0.0;
 
   double _liftMeters = 0.0;
@@ -65,24 +60,140 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   double _posZ = 0.0;
   static const double _dragToMeters = 0.0012;
 
-  double _baseScale = 1.0;
+  double _baseScale = 0.48;
   double _baseRotYDeg = 0.0;
-  double _baseX = 0.0;
-  double _baseZ = 0.0;
 
-  double _opacity = 0.6;
-  final bool _useIllusionMode = false;
+  final Set<int> _pointerIds = <int>{};
+  bool get _isMultiTouch => _pointerIds.length > 1;
+
+  Offset? _lastSingleFocalPoint;
+  DateTime _lastGestureAt = DateTime.fromMillisecondsSinceEpoch(0);
+  static const Duration _tapCooldownAfterGesture = Duration(milliseconds: 450);
 
   Timer? _updateTimer;
-  bool _rebuilding = false;
+  Timer? _positionTimer;
   Timer? _toastTimer;
+
+  bool _rebuilding = false;
+  bool _gestureInProgress = false;
+  bool _preferRebuildOnly = false;
+
   String _toastText = "";
 
   bool get _hasModel => _activeNode != null && _activeAnchor != null;
 
+  bool get _isRemoteGlb {
+    final p = widget.glbAssetPath.toLowerCase();
+    return p.startsWith('http://') || p.startsWith('https://');
+  }
+
+  bool get _isLocalGlb {
+    final p = widget.glbAssetPath.toLowerCase();
+    return p.endsWith('.glb') && !_isRemoteGlb;
+  }
+
+  String get _pngPath {
+    if (_isRemoteGlb) {
+      try {
+        final uri = Uri.parse(widget.glbAssetPath);
+        final segments = uri.pathSegments;
+
+        if (segments.length >= 3 && segments.first == 'model') {
+          final folder = segments[1];
+          final file = Uri.decodeComponent(segments.sublist(2).join('/'));
+          final pngFile = file.replaceAll(
+            RegExp(r'\.glb$', caseSensitive: false),
+            '.png',
+          );
+
+          return Uri(
+            scheme: uri.scheme,
+            host: uri.host,
+            port: uri.hasPort ? uri.port : null,
+            path: '/image',
+            queryParameters: {
+              'folder': folder,
+              'file': pngFile,
+            },
+          ).toString();
+        }
+      } catch (_) {}
+
+      return widget.glbAssetPath.replaceAll(
+        RegExp(r'\.glb$', caseSensitive: false),
+        '.png',
+      );
+    }
+
+    return widget.glbAssetPath
+        .replaceAll('assets/models/', 'assets/templates/')
+        .replaceAll(RegExp(r'\.glb$', caseSensitive: false), '.png');
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final size = MediaQuery.of(context).size;
+    final shortest = math.min(size.width, size.height);
+
+    double suggestedScale;
+    if (shortest <= 360) {
+      suggestedScale = 0.38;
+    } else if (shortest <= 430) {
+      suggestedScale = 0.48;
+    } else {
+      suggestedScale = 0.58;
+    }
+
+    if (!_hasModel) {
+      _scale = suggestedScale;
+      _baseScale = suggestedScale;
+    }
+  }
+
+  @override
+  void dispose() {
+    _updateTimer?.cancel();
+    _positionTimer?.cancel();
+    _toastTimer?.cancel();
+    _pointerIds.clear();
+    _safeDisposeSession();
+    super.dispose();
+  }
+
+  Future<void> _safeDisposeSession() async {
+    try {
+      if (_activeNode != null && _objects != null) {
+        try {
+          await _objects!.removeNode(_activeNode!);
+        } catch (e) {
+          debugPrint("removeNode dispose hatası: $e");
+        }
+      }
+
+      if (_activeAnchor != null && _anchors != null) {
+        try {
+          await _anchors!.removeAnchor(_activeAnchor!);
+        } catch (e) {
+          debugPrint("removeAnchor dispose hatası: $e");
+        }
+      }
+    } catch (e) {
+      debugPrint("AR cleanup genel hata: $e");
+    }
+
+    try {
+      _session?.dispose();
+    } catch (e) {
+      debugPrint("session dispose hatası: $e");
+    }
+  }
+
   void _showToast(String msg) {
     if (!mounted) return;
     setState(() => _toastText = msg);
+
     _toastTimer?.cancel();
     _toastTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted) return;
@@ -90,12 +201,8 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     });
   }
 
-  @override
-  void dispose() {
-    _updateTimer?.cancel();
-    _toastTimer?.cancel();
-    _session?.dispose();
-    super.dispose();
+  void _log(String msg) {
+    debugPrint("[ARMiniTestScreen] $msg");
   }
 
   void _onARViewCreated(
@@ -114,12 +221,12 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
       showWorldOrigin: false,
       handleTaps: true,
     );
+
     _objects!.onInitialize();
     _session!.onPlaneOrPointTap = _onPlaneOrPointTap;
 
-    if (!_useIllusionMode) {
-      _showToast("Plane görünce dokun → model eklensin.");
-    }
+    _log("MODEL URL => ${widget.glbAssetPath}");
+    _showToast("Düzlem görünce dokun ve modeli yerleştir.");
   }
 
   double _degToRad(double deg) => deg * math.pi / 180.0;
@@ -132,7 +239,9 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     final qBase = v.Quaternion.axisAngle(v.Vector3(1, 0, 0), -math.pi / 2);
 
     double yawDeg = (_rotYDeg + 180.0) % 360.0;
-    if (_mirrored) yawDeg = (360.0 - yawDeg) % 360.0;
+    if (_mirrored) {
+      yawDeg = (360.0 - yawDeg) % 360.0;
+    }
 
     final qYawWorld =
         v.Quaternion.axisAngle(v.Vector3(0, 1, 0), _degToRad(yawDeg));
@@ -153,8 +262,18 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
   }
 
   ARNode _buildNode() {
+    late final NodeType nodeType;
+
+    if (_isRemoteGlb) {
+      nodeType = NodeType.webGLB;
+    } else if (_isLocalGlb) {
+      nodeType = NodeType.localGLB;
+    } else {
+      nodeType = NodeType.localGLTF2;
+    }
+
     return ARNode(
-      type: NodeType.localGLTF2,
+      type: nodeType,
       uri: widget.glbAssetPath,
       scale: v.Vector3(_scale, _scale, _scale),
       position: _positionVec(),
@@ -162,19 +281,33 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     );
   }
 
-  void _debounceApply({int ms = 140}) {
+  bool get _allowLiveUpdateDuringGesture =>
+      !_isRemoteGlb && !_preferRebuildOnly;
+
+  void _queueTransformCommit({
+    int ms = 90,
+    bool forceRebuild = false,
+  }) {
     if (!_hasModel) return;
+
     _updateTimer?.cancel();
     _updateTimer = Timer(Duration(milliseconds: ms), () async {
-      await _applyTransform();
+      await _commitTransform(forceRebuild: forceRebuild);
     });
   }
 
-  Future<void> _applyTransform() async {
+  Future<void> _commitTransform({bool forceRebuild = false}) async {
     if (!_hasModel || _objects == null) return;
     if (_rebuilding) return;
+    if (_gestureInProgress && !forceRebuild) return;
+
+    if (_isRemoteGlb || _preferRebuildOnly || forceRebuild) {
+      await _rebuildSameAnchor();
+      return;
+    }
 
     final node = _activeNode!;
+
     try {
       final dyn = _objects as dynamic;
       await dyn.updateNode(
@@ -183,14 +316,44 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
         scale: v.Vector3(_scale, _scale, _scale),
         rotation: _combinedRotation(),
       );
+    } catch (e) {
+      _preferRebuildOnly = true;
+      _log("updateNode başarısız, rebuildOnly moduna geçildi: $e");
+      await _rebuildSameAnchor();
+    }
+  }
+
+  void _queuePositionCommit({int ms = 180}) {
+    if (!_hasModel) return;
+
+    _positionTimer?.cancel();
+    _positionTimer = Timer(Duration(milliseconds: ms), () async {
+      await _commitPositionOnly();
+    });
+  }
+
+  Future<void> _commitPositionOnly() async {
+    if (!_hasModel || _objects == null) return;
+    if (_rebuilding) return;
+
+    final node = _activeNode!;
+
+    try {
+      final dyn = _objects as dynamic;
+      await dyn.updateNode(
+        node,
+        position: _positionVec(),
+      );
       return;
-    } catch (_) {}
+    } catch (e) {
+      _log("positionOnly update başarısız, rebuild fallback: $e");
+    }
 
     await _rebuildSameAnchor();
   }
 
   Future<void> _rebuildSameAnchor() async {
-    if (!_hasModel || _objects == null) return;
+    if (!_hasModel || _objects == null || _anchors == null) return;
     if (_rebuilding) return;
 
     _rebuilding = true;
@@ -198,23 +361,48 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     final oldNode = _activeNode!;
 
     try {
-      await _objects!.removeNode(oldNode);
-      await Future.delayed(const Duration(milliseconds: 80));
+      try {
+        await _objects!.removeNode(oldNode);
+      } catch (e) {
+        _log("removeNode rebuild hatası: $e");
+      }
+
+      await Future.delayed(
+        Duration(milliseconds: _isRemoteGlb ? 180 : 90),
+      );
 
       final newNode = _buildNode();
       final ok =
           (await _objects!.addNode(newNode, planeAnchor: anchor)) ?? false;
+
       if (ok) {
         _activeNode = newNode;
+      } else {
+        _showToast("Model güncellenemedi.");
       }
-    } catch (_) {
+    } catch (e) {
+      _log("rebuild hatası: $e");
+      _showToast("Model güncelleme hatası.");
     } finally {
       _rebuilding = false;
     }
   }
 
+  void _applyAfterButtonChange({int ms = 60}) {
+    if (!_hasModel) return;
+
+    if (_isRemoteGlb || _preferRebuildOnly) {
+      _queueTransformCommit(ms: 20, forceRebuild: true);
+    } else {
+      _queueTransformCommit(ms: ms);
+    }
+  }
+
   Future<void> _onPlaneOrPointTap(List<ARHitTestResult?> hits) async {
-    if (_useIllusionMode) return;
+    if (_tapLocked) {
+      _showToast("Kilit açık. Önce kilidi kapat.");
+      return;
+    }
 
     if (_isMultiTouch) return;
 
@@ -222,31 +410,34 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     if (now.difference(_lastGestureAt) < _tapCooldownAfterGesture) return;
 
     if (_hasModel) {
-      _showToast("Zaten eklendi. Temizle ile sıfırla.");
+      _showToast("Model zaten eklendi. Sil ile sıfırla.");
       return;
     }
 
-    if (_tapLocked ||
-        _placing ||
-        _anchors == null ||
-        _objects == null ||
-        hits.isEmpty) return;
-
-    _placing = true;
-    final valid = hits.where((h) => h != null).cast<ARHitTestResult>().toList();
-    if (valid.isEmpty) {
-      _placing = false;
+    if (_placing || _anchors == null || _objects == null || hits.isEmpty) {
       return;
     }
+
+    final validHits = hits.whereType<ARHitTestResult>().toList();
+    if (validHits.isEmpty) return;
 
     final planeHits =
-        valid.where((h) => h.type == ARHitTestResultType.plane).toList();
-    final hit = planeHits.isNotEmpty ? planeHits.first : valid.first;
+        validHits.where((h) => h.type == ARHitTestResultType.plane).toList();
+
+    if (planeHits.isEmpty) {
+      _showToast("Önce zemini/masayı algılat.");
+      return;
+    }
+
+    _placing = true;
 
     try {
+      final hit = planeHits.first;
       final anchor = ARPlaneAnchor(transformation: hit.worldTransform);
       final okAnchor = (await _anchors!.addAnchor(anchor)) ?? false;
+
       if (!okAnchor) {
+        _showToast("Anchor eklenemedi.");
         _placing = false;
         return;
       }
@@ -254,135 +445,233 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
       final node = _buildNode();
       final okNode =
           (await _objects!.addNode(node, planeAnchor: anchor)) ?? false;
+
       if (!okNode) {
-        await _anchors!.removeAnchor(anchor);
+        try {
+          await _anchors!.removeAnchor(anchor);
+        } catch (e) {
+          _log("Anchor rollback hatası: $e");
+        }
+        _showToast("Model eklenemedi.");
         _placing = false;
         return;
       }
 
       _activeAnchor = anchor;
       _activeNode = node;
-      _showToast("✅ Masaya Yapıştırıldı!");
+
+      HapticFeedback.mediumImpact();
+      _showToast("✅ Model zemine yerleştirildi.");
     } catch (e) {
-      _showToast("❌ Hata: $e");
+      _log("Plane tap hatası: $e");
+      _showToast("Yerleştirme hatası.");
     } finally {
       _placing = false;
     }
   }
 
   Future<void> _clearAll() async {
-    if (_objects == null || _anchors == null) return;
     HapticFeedback.mediumImpact();
 
-    if (_activeNode != null) {
+    _updateTimer?.cancel();
+    _positionTimer?.cancel();
+
+    if (_objects != null && _activeNode != null) {
       try {
         await _objects!.removeNode(_activeNode!);
-      } catch (_) {}
+      } catch (e) {
+        _log("clear removeNode hatası: $e");
+      }
     }
-    if (_activeAnchor != null) {
+
+    if (_anchors != null && _activeAnchor != null) {
       try {
         await _anchors!.removeAnchor(_activeAnchor!);
-      } catch (_) {}
+      } catch (e) {
+        _log("clear removeAnchor hatası: $e");
+      }
     }
+
+    if (!mounted) return;
+
+    final size = MediaQuery.of(context).size;
+    final shortest = math.min(size.width, size.height);
+    final resetScale = shortest <= 360
+        ? 0.38
+        : shortest <= 430
+            ? 0.48
+            : 0.58;
 
     setState(() {
       _activeNode = null;
       _activeAnchor = null;
-      _scale = 1.0;
+      _scale = resetScale;
+      _baseScale = resetScale;
       _rotYDeg = 0.0;
       _liftMeters = 0.0;
       _posX = 0.0;
       _posZ = 0.0;
       _tiltMode = 0;
       _mirrored = false;
+      _lastSingleFocalPoint = null;
+      _gestureInProgress = false;
+      _preferRebuildOnly = false;
     });
 
     _showToast("Temizlendi. Tekrar dokunabilirsin.");
   }
 
   void _onScaleStart(ScaleStartDetails d) {
+    if (_tapLocked) return;
+    if (!_hasModel) return;
+
+    _gestureInProgress = true;
     _baseScale = _scale;
     _baseRotYDeg = _rotYDeg;
-    _baseX = _posX;
-    _baseZ = _posZ;
+    _lastSingleFocalPoint = d.focalPoint;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
-    if (!_hasModel && !_useIllusionMode) return;
+    if (_tapLocked) return;
+    if (!_hasModel) return;
 
-    if (_mirrored && _isMultiTouch) return;
+    _lastGestureAt = DateTime.now();
 
     if (_isMultiTouch) {
-      _lastGestureAt = DateTime.now();
-      final newScale = (_baseScale * d.scale).clamp(0.05, 3.0);
-      final deltaDeg = d.rotation * 180.0 / math.pi;
+      if (_mirrored) return;
 
-      final newRot = _useIllusionMode
-          ? (_baseRotYDeg + deltaDeg) % 360.0
-          : (_baseRotYDeg - deltaDeg) % 360.0;
+      final newScale = (_baseScale * d.scale).clamp(0.08, 4.0);
+      final deltaDeg = d.rotation * 180.0 / math.pi;
+      final newRot = (_baseRotYDeg - deltaDeg) % 360.0;
 
       setState(() {
         _scale = newScale;
         _rotYDeg = newRot;
       });
-      if (!_useIllusionMode) _debounceApply();
-    } else {
-      final dx =
-          d.focalPointDelta.dx * (_useIllusionMode ? 1.0 : _dragToMeters);
-      final dz =
-          d.focalPointDelta.dy * (_useIllusionMode ? 1.0 : _dragToMeters);
 
-      setState(() {
-        _posX = _baseX + dx;
-        _posZ = _baseZ + dz;
-      });
-      if (!_useIllusionMode) _debounceApply();
+      if (_allowLiveUpdateDuringGesture) {
+        _queueTransformCommit(ms: 70);
+      }
+      return;
+    }
+
+    if (_lastSingleFocalPoint == null) {
+      _lastSingleFocalPoint = d.focalPoint;
+      return;
+    }
+
+    final delta = d.focalPoint - _lastSingleFocalPoint!;
+    _lastSingleFocalPoint = d.focalPoint;
+
+    final dx = delta.dx * _dragToMeters;
+    final dz = delta.dy * _dragToMeters;
+
+    setState(() {
+      _posX = (_posX + dx).clamp(-1.5, 1.5);
+      _posZ = (_posZ + dz).clamp(-1.5, 1.5);
+    });
+
+    if (_allowLiveUpdateDuringGesture) {
+      _queueTransformCommit(ms: 70);
     }
   }
 
   void _onScaleEnd(ScaleEndDetails d) {
-    if (!_hasModel && !_useIllusionMode) return;
+    if (_tapLocked) return;
+    if (!_hasModel) return;
+
+    _gestureInProgress = false;
     _lastGestureAt = DateTime.now();
-    if (!_useIllusionMode) _debounceApply(ms: 60);
+    _lastSingleFocalPoint = null;
+
+    if (_isRemoteGlb || _preferRebuildOnly) {
+      _queueTransformCommit(ms: 20, forceRebuild: true);
+    } else {
+      _queueTransformCommit(ms: 40);
+    }
+  }
+
+  Future<void> _togglePlanes() async {
+    HapticFeedback.selectionClick();
+
+    setState(() => _showPlanes = !_showPlanes);
+
+    try {
+      await _session?.onInitialize(
+        showFeaturePoints: false,
+        showPlanes: _showPlanes,
+        showWorldOrigin: false,
+        handleTaps: true,
+      );
+      _showToast(_showPlanes ? "Düzlemler açık." : "Düzlemler kapalı.");
+    } catch (e) {
+      _log("Plane toggle hatası: $e");
+      _showToast("Düzlem görünürlüğü değiştirilemedi.");
+    }
   }
 
   void _toggleTilt() {
+    if (_tapLocked || !_hasModel) return;
     HapticFeedback.selectionClick();
+
     setState(() => _tiltMode = (_tiltMode + 1) % 3);
-    if (!_useIllusionMode) _debounceApply(ms: 80);
+    _applyAfterButtonChange();
   }
 
   void _toggleMirror() {
+    if (_tapLocked || !_hasModel) return;
     HapticFeedback.selectionClick();
+
     setState(() => _mirrored = !_mirrored);
-    if (!_useIllusionMode) _debounceApply(ms: 80);
+    _applyAfterButtonChange();
   }
 
   void _rotPlus90() {
+    if (_tapLocked || !_hasModel) return;
+    if (_mirrored) {
+      _showToast("Ayna açıkken döndürme kapalı.");
+      return;
+    }
+
     HapticFeedback.selectionClick();
-    setState(() => _rotYDeg = _useIllusionMode
-        ? (_rotYDeg + 90.0) % 360.0
-        : (_rotYDeg - 90.0) % 360.0);
-    if (!_useIllusionMode) _debounceApply(ms: 80);
+
+    setState(() => _rotYDeg = (_rotYDeg - 90.0) % 360.0);
+    _applyAfterButtonChange();
   }
 
   void _liftUp() {
+    if (_tapLocked || !_hasModel) return;
     HapticFeedback.selectionClick();
-    setState(() => _liftMeters = (_liftMeters + _liftStep).clamp(-0.30, 0.60));
-    if (!_useIllusionMode) _debounceApply(ms: 50);
+
+    setState(() {
+      _liftMeters = (_liftMeters + _liftStep).clamp(-0.30, 0.60);
+    });
+
+    if (_isRemoteGlb) {
+      _queuePositionCommit(ms: 180);
+    } else {
+      _applyAfterButtonChange(ms: 40);
+    }
   }
 
   void _liftDown() {
+    if (_tapLocked || !_hasModel) return;
     HapticFeedback.selectionClick();
-    setState(() => _liftMeters = (_liftMeters - _liftStep).clamp(-0.30, 0.60));
-    if (!_useIllusionMode) _debounceApply(ms: 50);
+
+    setState(() {
+      _liftMeters = (_liftMeters - _liftStep).clamp(-0.30, 0.60);
+    });
+
+    if (_isRemoteGlb) {
+      _queuePositionCommit(ms: 180);
+    } else {
+      _applyAfterButtonChange(ms: 40);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    String pngPath = widget.glbAssetPath
-        .replaceAll('assets/models/', 'assets/templates/')
-        .replaceAll('.glb', '.png');
+    final pngPath = _pngPath;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -390,29 +679,33 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
         children: [
           Listener(
             behavior: HitTestBehavior.translucent,
-            onPointerDown: (_) => setState(() => _activePointers++),
-            onPointerUp: (_) => setState(
-                () => _activePointers = (_activePointers - 1).clamp(0, 10)),
-            onPointerCancel: (_) => setState(
-                () => _activePointers = (_activePointers - 1).clamp(0, 10)),
+            onPointerDown: (e) {
+              setState(() {
+                _pointerIds.add(e.pointer);
+              });
+            },
+            onPointerUp: (e) {
+              setState(() {
+                _pointerIds.remove(e.pointer);
+              });
+            },
+            onPointerCancel: (e) {
+              setState(() {
+                _pointerIds.remove(e.pointer);
+              });
+            },
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onScaleStart: _onScaleStart,
               onScaleUpdate: _onScaleUpdate,
               onScaleEnd: _onScaleEnd,
-              child: Stack(
-                children: [
-                  ARView(
-                    onARViewCreated: _onARViewCreated,
-                    planeDetectionConfig:
-                        PlaneDetectionConfig.horizontalAndVertical,
-                  ),
-                ],
+              child: ARView(
+                onARViewCreated: _onARViewCreated,
+                planeDetectionConfig:
+                    PlaneDetectionConfig.horizontalAndVertical,
               ),
             ),
           ),
-
-          // ÜST BAR (Geri, Normal Mod'a Geçiş, Silme)
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
@@ -422,24 +715,32 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                   filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 10),
+                      horizontal: 10,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.45),
                       borderRadius: BorderRadius.circular(26),
-                      border: Border.all(color: Colors.white.withOpacity(0.12)),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.12),
+                      ),
                     ),
                     child: Row(
                       children: [
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white),
+                          icon: const Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: Colors.white,
+                          ),
                         ),
                         TextButton.icon(
                           onPressed: () async {
                             HapticFeedback.lightImpact();
+
                             final cameras = await availableCameras();
                             if (!context.mounted) return;
+
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
@@ -447,7 +748,7 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                                   title: "Çizim Şablonu",
                                   imagePaths: [pngPath],
                                   cameras: cameras,
-                                  isLocalFile: false,
+                                  isLocalFile: !_isRemoteGlb,
                                 ),
                               ),
                             );
@@ -460,9 +761,10 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                           label: Text(
                             "NORMAL MOD",
                             style: GoogleFonts.poppins(
-                                color: Colors.cyanAccent,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13),
+                              color: Colors.cyanAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                         const Spacer(),
@@ -472,7 +774,9 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                               _toastText,
                               textAlign: TextAlign.center,
                               style: GoogleFonts.poppins(
-                                  color: Colors.white70, fontSize: 10),
+                                color: Colors.white70,
+                                fontSize: 10,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -480,8 +784,10 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                         const Spacer(),
                         IconButton(
                           onPressed: _clearAll,
-                          icon: const Icon(Icons.delete_outline_rounded,
-                              color: Colors.white),
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            color: Colors.white,
+                          ),
                         ),
                       ],
                     ),
@@ -490,8 +796,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
               ),
             ),
           ),
-
-          // ✅ YENİ ALT MENÜ (TUTORIAL_SCREEN STİLİ)
           Positioned(
             bottom: 0,
             left: 10,
@@ -507,12 +811,15 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                     filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 12),
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withOpacity(0.40),
                         borderRadius: BorderRadius.circular(20),
-                        border:
-                            Border.all(color: Colors.white.withOpacity(0.10)),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.10),
+                        ),
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -524,7 +831,7 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                                   icon: _tapLocked
                                       ? Icons.lock_rounded
                                       : Icons.lock_open_rounded,
-                                  label: _tapLocked ? "Locked" : "Lock",
+                                  label: _tapLocked ? "Kilitli" : "Kilitle",
                                   onPressed: () {
                                     HapticFeedback.selectionClick();
                                     setState(() => _tapLocked = !_tapLocked);
@@ -535,8 +842,21 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                               const SizedBox(width: 6),
                               Expanded(
                                 child: _controlBtn(
+                                  icon: _showPlanes
+                                      ? Icons.grid_on_rounded
+                                      : Icons.grid_off_rounded,
+                                  label: _showPlanes
+                                      ? "Düzlem Açık"
+                                      : "Düzlem Kapalı",
+                                  onPressed: _togglePlanes,
+                                  active: _showPlanes,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: _controlBtn(
                                   icon: Icons.flip_rounded,
-                                  label: "Flip",
+                                  label: "Ayna",
                                   onPressed: _toggleMirror,
                                   active: _mirrored,
                                 ),
@@ -545,20 +865,9 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                               Expanded(
                                 child: _controlBtn(
                                   icon: Icons.rotate_90_degrees_ccw_rounded,
-                                  label: "Rotate",
+                                  label: "Döndür",
                                   onPressed: _rotPlus90,
                                   active: _rotYDeg != 0.0,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: _controlBtn(
-                                  icon: Icons.view_in_ar_rounded,
-                                  label: _tiltMode == 0
-                                      ? "Tilt"
-                                      : "Tilt ${_tiltMode}x",
-                                  onPressed: _toggleTilt,
-                                  active: _tiltMode > 0,
                                 ),
                               ),
                             ],
@@ -568,10 +877,20 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                             children: [
                               Expanded(
                                 child: _controlBtn(
+                                  icon: Icons.view_in_ar_rounded,
+                                  label: _tiltMode == 0
+                                      ? "Eğim"
+                                      : "Eğim ${_tiltMode}x",
+                                  onPressed: _toggleTilt,
+                                  active: _tiltMode > 0,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: _controlBtn(
                                   icon: Icons.arrow_downward_rounded,
                                   label: "Y -",
                                   onPressed: _liftDown,
-                                  active: false,
                                 ),
                               ),
                               const SizedBox(width: 6),
@@ -580,10 +899,25 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
                                   icon: Icons.arrow_upward_rounded,
                                   label: "Y +",
                                   onPressed: _liftUp,
-                                  active: false,
                                 ),
                               ),
                             ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _tapLocked
+                                ? "Kilit açık: taşıma, ölçekleme, döndürme ve eğim kapalı."
+                                : _mirrored
+                                    ? "Ayna açık: tek parmak taşıma serbest, pinch ve döndürme kapalı."
+                                    : _isRemoteGlb
+                                        ? "Remote GLB: pinch ve Y değişiklikleri klon olmaması için kontrollü uygulanır."
+                                        : "Tek parmak taşı • Çift parmak ölçekle/döndür • Zemine dokunarak yerleştir",
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.poppins(
+                              color: Colors.white70,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ],
                       ),
@@ -598,7 +932,6 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     );
   }
 
-  // ✅ KUSURSUZ GLASSMORPHISM BUTON MİMARİSİ
   Widget _controlBtn({
     required IconData icon,
     required String label,
@@ -608,22 +941,31 @@ class _ARMiniTestScreenState extends State<ARMiniTestScreen> {
     return ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
-          elevation: 0,
-          backgroundColor: active
-              ? Colors.white.withOpacity(0.20)
-              : Colors.white.withOpacity(0.08),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+        elevation: 0,
+        backgroundColor: active
+            ? Colors.white.withOpacity(0.20)
+            : Colors.white.withOpacity(0.08),
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 20),
           const SizedBox(height: 4),
-          Text(label,
-              style:
-                  GoogleFonts.poppins(fontSize: 9, fontWeight: FontWeight.w600))
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );

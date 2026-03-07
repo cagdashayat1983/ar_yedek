@@ -104,7 +104,7 @@ final List<CategoryModel> categories = [
     templateFolder: "nature",
     imagePath: "assets/categories/nature.png",
     icon: Icons.edit_note_rounded,
-    isPremium: true,
+    isPremium: false,
   ),
   const CategoryModel(
     titleKey: "proMember",

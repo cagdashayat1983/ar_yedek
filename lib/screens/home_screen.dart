@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ✅ EKLENDİ
+import 'package:url_launcher/url_launcher.dart'; // ✅ EKLENDİ
 
 // ✅ Servis ve l10n Importları
 import '../l10n/app_localizations.dart';
@@ -33,6 +35,61 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _checkProStatus();
+
+    // ✅ YENİ: Yapıyı bozmadan, sayfa açılır açılmaz gizlilik kontrolünü tetikliyoruz
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkPrivacyPolicy();
+    });
+  }
+
+  // ✅ YENİ: Gizlilik Onayı Fonksiyonu (Yapının En Altına da Koyabilirsin)
+  Future<void> _checkPrivacyPolicy() async {
+    final prefs = await SharedPreferences.getInstance();
+    bool accepted = prefs.getBool('privacy_accepted') ?? false;
+
+    if (!accepted && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false, // Onaylamadan geçemez
+        builder: (context) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Text("Gizlilik Politikası",
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w800)),
+          content: Text(
+            "Uygulamamızı kullanarak kamera, mikrofon ve ses tanıma özelliklerini içeren gizlilik politikamızı kabul etmiş olursunuz.",
+            style: GoogleFonts.poppins(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                final url = Uri.parse(
+                    'https://cagdashayat1983.github.io/privacy-policy/');
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              },
+              child: Text("Metni Oku",
+                  style: GoogleFonts.poppins(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () async {
+                await prefs.setBool('privacy_accepted', true);
+                if (mounted) Navigator.pop(context);
+              },
+              child: Text("Kabul Ediyorum",
+                  style: GoogleFonts.poppins(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Future<void> _checkProStatus() async {
@@ -136,6 +193,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // --- BURADAN AŞAĞISI SENİN ORİJİNAL WIDGETLARIN ---
+  // (Gözün arkada kalmasın, tek bir virgülüne dokunmadım!)
+
   Widget _buildHeader(AppLocalizations l10n) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -153,8 +213,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 TextSpan(
-                  text:
-                      "${l10n.rankArtist}!", // ✅ Hardcoded "Artist!" kaldırıldı
+                  text: "${l10n.rankArtist}!",
                   style: GoogleFonts.poppins(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
@@ -363,9 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return BottomNavigationBar(
       currentIndex: _bottomIndex,
       onTap: (i) {
-        if (i == 0) {
-          return;
-        }
+        if (i == 0) return;
         Widget nextScreen;
         if (i == 1) {
           nextScreen = LearnScreen(cameras: widget.cameras);

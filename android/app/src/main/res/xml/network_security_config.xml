@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">pub-b8123ba3d4b846aa9077e0ebea72aa9e.r2.dev</domain>
+        <domain includeSubdomains="true">hayatify-api.cagdasyucedag.workers.dev</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
