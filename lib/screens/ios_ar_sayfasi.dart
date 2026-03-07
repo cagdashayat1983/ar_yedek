@@ -19,12 +19,15 @@ class IosArSayfasi extends StatefulWidget {
   State<IosArSayfasi> createState() => _IosArSayfasiState();
 }
 
-class _IosArSayfasiState extends State<IosArSayfasi> {
+class _IosArSayfasiState extends State<IosArSayfasi>
+    with SingleTickerProviderStateMixin {
   static const double _defaultOpacity = 0.82;
   static const double _planeVisualSink = 0.0015;
   static const String _nodeId = 'image_plane_node';
 
   final GlobalKey _sceneKey = GlobalKey();
+
+  late final AnimationController _cubeController;
 
   ARKitController? arkitController;
   ARKitNode? imageNode;
@@ -69,8 +72,18 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
   bool get _hasModel => imageNode != null;
 
   @override
+  void initState() {
+    super.initState();
+    _cubeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat();
+  }
+
+  @override
   void dispose() {
     _toastTimer?.cancel();
+    _cubeController.dispose();
     arkitController?.dispose();
     super.dispose();
   }
@@ -247,7 +260,7 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     };
 
     controller.onError = (String? error) {
-      _showToast('AR hatası: ${error ?? 'Bilinmeyen hata'}');
+      _showToast("AR hatası: ${error ?? 'Bilinmeyen hata'}");
     };
 
     controller.onSessionWasInterrupted = () {
@@ -504,6 +517,58 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     _showToast('$label şu an pasif.');
   }
 
+  Widget _buildScanningCubeOverlay() {
+    return IgnorePointer(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 120),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedBuilder(
+                animation: _cubeController,
+                builder: (context, child) {
+                  final t = _cubeController.value;
+                  final pulse = 0.92 + (math.sin(t * math.pi * 2) * 0.08);
+                  final rise = math.sin(t * math.pi * 2) * 5.0;
+
+                  return Transform.translate(
+                    offset: Offset(0, rise),
+                    child: Transform.rotate(
+                      angle: t * math.pi * 2,
+                      child: Transform.scale(
+                        scale: pulse,
+                        child: CustomPaint(
+                          size: const Size(92, 92),
+                          painter: ScanningCubePainter(progress: t),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              Text(
+                _isTrackingNormal ? 'Dokun ve yerleştir' : 'Zemin aranıyor...',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black54,
+                      blurRadius: 10,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     _isTablet = MediaQuery.of(context).size.shortestSide >= 600;
@@ -511,21 +576,19 @@ class _IosArSayfasiState extends State<IosArSayfasi> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
-        clipBehavior: Clip.none,
+        fit: StackFit.expand,
         children: [
-          Positioned.fill(
-            child: Container(
-              key: _sceneKey,
-              color: Colors.black,
-              child: ARKitSceneView(
-                onARKitViewCreated: _onARKitViewCreated,
-                planeDetection: ARPlaneDetection.horizontal,
-                enableTapRecognizer: true,
-                showFeaturePoints: kDebugMode,
-                showStatistics: kDebugMode,
-              ),
+          SizedBox.expand(
+            key: _sceneKey,
+            child: ARKitSceneView(
+              onARKitViewCreated: _onARKitViewCreated,
+              planeDetection: ARPlaneDetection.horizontal,
+              enableTapRecognizer: true,
+              showFeaturePoints: kDebugMode,
+              showStatistics: kDebugMode,
             ),
           ),
+          if (!_hasModel) _buildScanningCubeOverlay(),
           if (_hasModel)
             Positioned.fill(
               child: GestureDetector(
@@ -817,4 +880,91 @@ class GridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+class ScanningCubePainter extends CustomPainter {
+  final double progress;
+
+  ScanningCubePainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final glowPaint = Paint()
+      ..color = Colors.cyanAccent.withOpacity(0.14)
+      ..style = PaintingStyle.fill;
+
+    final linePaint = Paint()
+      ..color = Colors.cyanAccent.withOpacity(0.95)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+
+    final softLinePaint = Paint()
+      ..color = Colors.white.withOpacity(0.35)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+
+    final face = size.width * 0.34;
+    final depth = size.width * 0.16;
+
+    final front = Rect.fromCenter(
+      center: Offset(cx - depth * 0.35, cy + depth * 0.15),
+      width: face,
+      height: face,
+    );
+
+    final back = front.shift(Offset(depth, -depth));
+
+    final pulse = 0.4 + (math.sin(progress * math.pi * 2) + 1) * 0.15;
+
+    final frontR = RRect.fromRectAndRadius(front, const Radius.circular(10));
+    final backR = RRect.fromRectAndRadius(back, const Radius.circular(10));
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(cx, cy),
+          width: size.width * (0.88 + pulse * 0.08),
+          height: size.height * (0.88 + pulse * 0.08),
+        ),
+        const Radius.circular(24),
+      ),
+      glowPaint,
+    );
+
+    canvas.drawRRect(backR, softLinePaint);
+    canvas.drawRRect(frontR, linePaint);
+
+    canvas.drawLine(front.topLeft, back.topLeft, linePaint);
+    canvas.drawLine(front.topRight, back.topRight, linePaint);
+    canvas.drawLine(front.bottomLeft, back.bottomLeft, linePaint);
+    canvas.drawLine(front.bottomRight, back.bottomRight, linePaint);
+
+    final fillPaint = Paint()
+      ..color = Colors.cyanAccent.withOpacity(0.10 + pulse * 0.10)
+      ..style = PaintingStyle.fill;
+
+    final path = Path()
+      ..moveTo(front.topLeft.dx, front.topLeft.dy)
+      ..lineTo(front.topRight.dx, front.topRight.dy)
+      ..lineTo(back.topRight.dx, back.topRight.dy)
+      ..lineTo(back.topLeft.dx, back.topLeft.dy)
+      ..close();
+
+    canvas.drawPath(path, fillPaint);
+
+    final dotPaint = Paint()
+      ..color = Colors.white.withOpacity(0.9)
+      ..style = PaintingStyle.fill;
+
+    final dotX = lerpDouble(front.left + 8, front.right - 8, progress)!;
+    canvas.drawCircle(Offset(dotX, front.top - 8), 2.8, dotPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant ScanningCubePainter oldDelegate) {
+    return oldDelegate.progress != progress;
+  }
 }
