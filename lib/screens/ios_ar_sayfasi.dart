@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui';
+import 'dart:ui' as ui;
 
 import 'package:arkit_plugin/arkit_plugin.dart';
 import 'package:flutter/foundation.dart';
@@ -21,74 +21,85 @@ class IosArSayfasi extends StatefulWidget {
 
 class _IosArSayfasiState extends State<IosArSayfasi>
     with SingleTickerProviderStateMixin {
+  static const String _nodeId = 'image_plane_node';
   static const double _defaultOpacity = 0.82;
   static const double _planeVisualSink = 0.0015;
-  static const String _nodeId = 'image_plane_node';
 
   final GlobalKey _sceneKey = GlobalKey();
 
-  late final AnimationController _scanAnimController;
+  late final AnimationController _reticleAnim;
 
   ARKitController? arkitController;
   ARKitNode? imageNode;
   String? nodeName;
 
+  ARKitTestResult? _currentPlacementHit;
+
   bool _placing = false;
   bool _tapLocked = false;
   bool _mirrored = false;
+  bool _isTrackingNormal = true;
+  bool _surfaceReady = false;
 
   int _gridMode = 0;
   int _tiltMode = 0;
 
   double _scale = 0.22;
-  double _liftMeters = 0.0;
-
-  double _posX = 0.0;
-  double _posZ = -0.5;
-
   double _baseScale = 0.22;
+
   double _rotYRad = -math.pi / 2;
   double _rotZRad = 0.0;
   double _baseRotZRad = 0.0;
 
+  double _liftMeters = 0.0;
   double _opacity = _defaultOpacity;
 
-  bool _isTablet = false;
-  bool _isTrackingNormal = true;
-  bool _surfaceReady = false;
+  double _posX = 0.0;
+  double _posZ = -0.5;
 
-  bool _isDragHitTestBusy = false;
-  Offset? _queuedDragPoint;
+  bool _isTablet = false;
 
   bool _imageMetricsReady = false;
   double _imageAspectRatio = 1.0;
   double _planeWidth = 1.0;
   double _planeHeight = 1.0;
 
-  String _lastTrackingToastKey = '';
+  bool _isDragHitTestBusy = false;
+  Offset? _queuedDragPoint;
 
   Timer? _toastTimer;
-  Timer? _surfaceProbeTimer;
+  Timer? _placementProbeTimer;
   String _toastText = '';
+  String _lastTrackingToastKey = '';
 
   bool get _hasModel => imageNode != null;
 
   @override
   void initState() {
     super.initState();
-    _scanAnimController = AnimationController(
+    _reticleAnim = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2200),
+      duration: const Duration(milliseconds: 1800),
     )..repeat();
   }
 
   @override
   void dispose() {
     _toastTimer?.cancel();
-    _surfaceProbeTimer?.cancel();
-    _scanAnimController.dispose();
+    _placementProbeTimer?.cancel();
+    _reticleAnim.dispose();
     arkitController?.dispose();
     super.dispose();
+  }
+
+  void _showToast(String msg) {
+    if (!mounted) return;
+    setState(() => _toastText = msg);
+    _toastTimer?.cancel();
+    _toastTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() => _toastText = '');
+    });
   }
 
   double _defaultStartScale() => _isTablet ? 0.18 : 0.22;
@@ -102,16 +113,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       default:
         return 'Eğim';
     }
-  }
-
-  void _showToast(String msg) {
-    if (!mounted) return;
-    setState(() => _toastText = msg);
-    _toastTimer?.cancel();
-    _toastTimer = Timer(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      setState(() => _toastText = '');
-    });
   }
 
   String _normalizedLocalPath(String rawPath) {
@@ -142,14 +143,14 @@ class _IosArSayfasiState extends State<IosArSayfasi>
         bytes = data.buffer.asUint8List();
       }
 
-      final codec = await instantiateImageCodec(bytes);
+      final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
       final image = frame.image;
 
       final width = image.width.toDouble();
       final height = image.height.toDouble();
 
-      _imageAspectRatio = height > 0 ? (width / height) : 1.0;
+      _imageAspectRatio = height > 0 ? width / height : 1.0;
 
       const longestEdgeMeters = 1.0;
       if (_imageAspectRatio >= 1.0) {
@@ -205,7 +206,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
         }
       }
     }
-
     return null;
   }
 
@@ -276,33 +276,30 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     };
   }
 
-  void _startSurfaceProbeLoop() {
-    _surfaceProbeTimer?.cancel();
-    _surfaceProbeTimer = Timer.periodic(
-      const Duration(milliseconds: 350),
+  void _startPlacementProbeLoop() {
+    _placementProbeTimer?.cancel();
+    _placementProbeTimer = Timer.periodic(
+      const Duration(milliseconds: 180),
       (_) async {
         if (!mounted) return;
-        if (_hasModel) {
-          if (_surfaceReady) {
-            setState(() => _surfaceReady = false);
-          }
-          return;
-        }
-
+        if (_hasModel) return;
         if (!_isTrackingNormal) {
-          if (_surfaceReady) {
-            setState(() => _surfaceReady = false);
+          if (_surfaceReady || _currentPlacementHit != null) {
+            setState(() {
+              _surfaceReady = false;
+              _currentPlacementHit = null;
+            });
           }
           return;
         }
 
-        final hit = await _performBestHitTest(0.5, 0.56);
+        final hit = await _performBestHitTest(0.5, 0.58);
         if (!mounted) return;
 
-        final readyNow = hit != null;
-        if (readyNow != _surfaceReady) {
-          setState(() => _surfaceReady = readyNow);
-        }
+        setState(() {
+          _currentPlacementHit = hit;
+          _surfaceReady = hit != null;
+        });
       },
     );
   }
@@ -310,36 +307,21 @@ class _IosArSayfasiState extends State<IosArSayfasi>
   void _onARKitViewCreated(ARKitController controller) {
     arkitController = controller;
     _configureCallbacks(controller);
-    _startSurfaceProbeLoop();
-    _showToast('Kamerayı zemine tut ve ekrana dokun.');
+    _startPlacementProbeLoop();
+    _showToast('Kamerayı zemine tut. Nişangâh mavi olunca dokun.');
   }
 
-  Future<void> _tryPlaceAtGlobalPoint(Offset globalPoint) async {
+  Future<void> _tryPlaceFromCenterHit() async {
     if (_placing || _hasModel || _tapLocked) return;
 
-    final controller = arkitController;
-    if (controller == null) return;
-
     if (!_isTrackingNormal) {
-      _showToast('Takip henüz hazır değil. Kamerayı biraz daha gezdir.');
+      _showToast('Takip hazır değil. Kamerayı biraz daha gezdir.');
       return;
     }
 
-    final renderBox =
-        _sceneKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null || !renderBox.hasSize) return;
-
-    final local = renderBox.globalToLocal(globalPoint);
-    final size = renderBox.size;
-
-    final nx = (local.dx / size.width).clamp(0.0, 1.0).toDouble();
-    final ny = (local.dy / size.height).clamp(0.0, 1.0).toDouble();
-
-    final hit = await _performBestHitTest(nx, ny) ??
-        await _performBestHitTest(0.5, 0.56);
-
+    final hit = _currentPlacementHit ?? await _performBestHitTest(0.5, 0.58);
     if (hit == null) {
-      _showToast('Zemin bulunamadı. Kamerayı biraz daha aşağı tut.');
+      _showToast('Zemin kilitlenmedi. Kamerayı biraz daha aşağı indir.');
       return;
     }
 
@@ -386,10 +368,11 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       if (mounted) {
         setState(() {
           _surfaceReady = false;
+          _currentPlacementHit = null;
         });
       }
 
-      _showToast('✅ Resim zemine yapıştı!');
+      _showToast('✅ Resim zemine kusursuz oturdu!');
     } catch (e) {
       _showToast('❌ Yerleştirme hatası: $e');
     } finally {
@@ -446,7 +429,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
           _rotZRad = _baseRotZRad - d.rotation;
         }
       });
-
       unawaited(_updateNodeTransform());
       return;
     }
@@ -468,8 +450,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     _isDragHitTestBusy = true;
 
     try {
-      final renderBox =
-          _sceneKey.currentContext?.findRenderObject() as RenderBox?;
+      final renderBox = _sceneKey.currentContext?.findRenderObject() as RenderBox?;
       if (renderBox == null || !renderBox.hasSize) return;
 
       final local = renderBox.globalToLocal(globalPoint);
@@ -499,11 +480,33 @@ class _IosArSayfasiState extends State<IosArSayfasi>
 
       final pending = _queuedDragPoint;
       _queuedDragPoint = null;
-
       if (pending != null && mounted) {
         unawaited(_dragNodeOnPlane(pending));
       }
     }
+  }
+
+  Future<void> _reSnapToCenterPlane() async {
+    if (!_hasModel || nodeName == null) return;
+
+    final hit = await _performBestHitTest(0.5, 0.58);
+    if (hit == null) {
+      _showToast('Merkezde zemin bulunamadı.');
+      return;
+    }
+
+    final col = hit.worldTransform.getColumn(3);
+    _posX = col.x;
+    _posZ = col.z;
+
+    imageNode!.position = v.Vector3(
+      _posX,
+      col.y + _liftMeters - _planeVisualSink,
+      _posZ,
+    );
+
+    await _updateNodeTransform();
+    _showToast('Zemine yeniden oturtuldu.');
   }
 
   Future<void> _clearAll() async {
@@ -518,6 +521,8 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     setState(() {
       imageNode = null;
       nodeName = null;
+      _currentPlacementHit = null;
+      _surfaceReady = false;
       _scale = _defaultStartScale();
       _rotYRad = -math.pi / 2;
       _rotZRad = 0.0;
@@ -525,10 +530,9 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       _tiltMode = 0;
       _mirrored = false;
       _opacity = _defaultOpacity;
-      _surfaceReady = false;
     });
 
-    _showToast('Temizlendi. Tekrar dokunabilirsin.');
+    _showToast('Temizlendi. Tekrar yerleştirebilirsin.');
   }
 
   void _toggleGrid() {
@@ -550,7 +554,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
   }
 
   void _rotPlus90() {
-    setState(() => _rotZRad -= (math.pi / 2));
+    setState(() => _rotZRad -= math.pi / 2);
     unawaited(_updateNodeTransform());
   }
 
@@ -563,7 +567,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     final oldLift = _liftMeters;
     final newLift = (_liftMeters + delta).clamp(-0.03, 0.30).toDouble();
     final appliedDelta = newLift - oldLift;
-
     if (appliedDelta == 0.0) return;
 
     setState(() => _liftMeters = newLift);
@@ -581,73 +584,136 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     _showToast('$label şu an pasif.');
   }
 
-  Widget _buildScanOverlay() {
-    return IgnorePointer(
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 120),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedBuilder(
-                animation: _scanAnimController,
-                builder: (context, child) {
-                  final t = _scanAnimController.value;
-                  return Transform.rotate(
-                    angle: t * math.pi * 2,
-                    child: CustomPaint(
-                      size: const Size(96, 96),
-                      painter: ScanCubePainter(
-                        active: _surfaceReady && _isTrackingNormal,
-                        progress: t,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              Text(
-                !_isTrackingNormal
-                    ? 'Zemin aranıyor...'
-                    : _surfaceReady
-                        ? 'Dokun ve yerleştir'
-                        : 'Kamerayı biraz daha zemine indir',
-                style: TextStyle(
-                  color: _surfaceReady && _isTrackingNormal
-                      ? Colors.cyanAccent
-                      : Colors.white70,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  shadows: const [
-                    Shadow(color: Colors.black54, blurRadius: 10),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlassPanel({required Widget child, EdgeInsets? padding}) {
+  Widget _glassPanel({
+    required Widget child,
+    EdgeInsets padding = const EdgeInsets.all(12),
+  }) {
     return Container(
-      padding: padding ?? const EdgeInsets.all(12),
+      padding: padding,
       decoration: BoxDecoration(
-        color: const Color(0xFF111111).withOpacity(0.72),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.10),
-        ),
+        color: const Color(0xFF101010).withOpacity(0.72),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: Colors.white.withOpacity(0.09)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.22),
-            blurRadius: 22,
+            color: Colors.black.withOpacity(0.24),
+            blurRadius: 24,
             offset: const Offset(0, 10),
           ),
         ],
       ),
       child: child,
+    );
+  }
+
+  Widget _toolButton({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required Color activeColor,
+    required VoidCallback onTap,
+  }) {
+    final bgColor =
+        active ? activeColor.withOpacity(0.18) : Colors.white.withOpacity(0.05);
+    final borderColor =
+        active ? activeColor.withOpacity(0.50) : Colors.white.withOpacity(0.10);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 70,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: borderColor, width: 1.2),
+                boxShadow: active
+                    ? [
+                        BoxShadow(
+                          color: activeColor.withOpacity(0.20),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Icon(
+                icon,
+                color: active ? activeColor : Colors.white,
+                size: 24,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: active ? activeColor : Colors.white70,
+                fontSize: 11,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReticle() {
+    return IgnorePointer(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 90),
+          child: AnimatedBuilder(
+            animation: _reticleAnim,
+            builder: (context, child) {
+              final t = _reticleAnim.value;
+              final pulse = 0.96 + math.sin(t * math.pi * 2) * 0.05;
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Transform.scale(
+                    scale: pulse,
+                    child: CustomPaint(
+                      size: const Size(92, 92),
+                      painter: ReticlePainter(
+                        active: _surfaceReady && _isTrackingNormal,
+                        progress: t,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    !_isTrackingNormal
+                        ? 'Zemin aranıyor...'
+                        : _surfaceReady
+                            ? 'Dokun ve yerleştir'
+                            : 'Kamerayı biraz daha zemine indir',
+                    style: TextStyle(
+                      color: _surfaceReady && _isTrackingNormal
+                          ? Colors.cyanAccent
+                          : Colors.white70,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      shadows: const [
+                        Shadow(color: Colors.black54, blurRadius: 10),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 
@@ -660,9 +726,8 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Container(
+          SizedBox.expand(
             key: _sceneKey,
-            color: Colors.black,
             child: ARKitSceneView(
               onARKitViewCreated: _onARKitViewCreated,
               planeDetection: ARPlaneDetection.horizontal,
@@ -671,12 +736,13 @@ class _IosArSayfasiState extends State<IosArSayfasi>
               showStatistics: kDebugMode,
             ),
           ),
+
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
-              onTapUp: (details) {
+              onTapUp: (_) {
                 if (!_hasModel) {
-                  unawaited(_tryPlaceAtGlobalPoint(details.globalPosition));
+                  unawaited(_tryPlaceFromCenterHit());
                 }
               },
               onScaleStart: _hasModel ? _onScaleStart : null,
@@ -684,7 +750,9 @@ class _IosArSayfasiState extends State<IosArSayfasi>
               child: const SizedBox.expand(),
             ),
           ),
-          if (!_hasModel) _buildScanOverlay(),
+
+          if (!_hasModel) _buildReticle(),
+
           if (_gridMode > 0)
             Positioned.fill(
               child: IgnorePointer(
@@ -693,75 +761,88 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                 ),
               ),
             ),
+
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-              child: _buildGlassPanel(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.arrow_back_ios_new,
-                          color: Colors.white, size: 22),
-                    ),
-                    Expanded(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.apple,
-                            size: 18,
-                            color: _isTrackingNormal
-                                ? Colors.cyanAccent
-                                : Colors.orangeAccent,
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              _isTrackingNormal
-                                  ? 'PRO AR MODU (iOS)'
-                                  : 'ZEMİN TARAMA...',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: _isTrackingNormal
-                                    ? Colors.cyanAccent
-                                    : Colors.orangeAccent,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
-                                letterSpacing: 0.3,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: _glassPanel(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                      Expanded(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.apple,
+                              size: 18,
+                              color: _isTrackingNormal
+                                  ? Colors.cyanAccent
+                                  : Colors.orangeAccent,
+                            ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                _isTrackingNormal
+                                    ? 'PRO AR MODU (iOS)'
+                                    : 'ZEMİN TARAMA...',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: _isTrackingNormal
+                                      ? Colors.cyanAccent
+                                      : Colors.orangeAccent,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      onPressed: () => unawaited(_clearAll()),
-                      icon: const Icon(Icons.delete_outline,
-                          color: Colors.white, size: 24),
-                    ),
-                  ],
+                      IconButton(
+                        onPressed: () => unawaited(_clearAll()),
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
+
           if (_toastText.isNotEmpty)
             Positioned(
-              top: MediaQuery.of(context).padding.top + 78,
-              left: 24,
-              right: 24,
+              top: MediaQuery.of(context).padding.top + 76,
+              left: 28,
+              right: 28,
               child: IgnorePointer(
                 child: Center(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.68),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                      border:
+                          Border.all(color: Colors.white.withOpacity(0.08)),
                     ),
                     child: Text(
                       _toastText,
@@ -776,6 +857,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                 ),
               ),
             ),
+
           Positioned(
             left: 12,
             right: 12,
@@ -785,14 +867,14 @@ class _IosArSayfasiState extends State<IosArSayfasi>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildGlassPanel(
+                  _glassPanel(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     child: Row(
                       children: [
                         Icon(
                           Icons.opacity_rounded,
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.white.withOpacity(0.95),
                           size: 20,
                         ),
                         const SizedBox(width: 10),
@@ -801,9 +883,11 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                             data: SliderTheme.of(context).copyWith(
                               trackHeight: 4,
                               thumbShape: const RoundSliderThumbShape(
-                                  enabledThumbRadius: 10),
+                                enabledThumbRadius: 10,
+                              ),
                               overlayShape: const RoundSliderOverlayShape(
-                                  overlayRadius: 18),
+                                overlayRadius: 18,
+                              ),
                             ),
                             child: Slider(
                               value: _opacity,
@@ -819,9 +903,9 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                     ),
                   ),
                   const SizedBox(height: 10),
-                  _buildGlassPanel(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 12),
+                  _glassPanel(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
@@ -840,8 +924,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                             label: 'Kilit',
                             active: _tapLocked,
                             activeColor: Colors.redAccent,
-                            onTap: () =>
-                                setState(() => _tapLocked = !_tapLocked),
+                            onTap: () => setState(() => _tapLocked = !_tapLocked),
                           ),
                           const SizedBox(width: 10),
                           _toolButton(
@@ -885,6 +968,14 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                           ),
                           const SizedBox(width: 10),
                           _toolButton(
+                            icon: Icons.center_focus_strong,
+                            label: 'Oturt',
+                            active: false,
+                            activeColor: Colors.cyanAccent,
+                            onTap: () => unawaited(_reSnapToCenterPlane()),
+                          ),
+                          const SizedBox(width: 10),
+                          _toolButton(
                             icon: Icons.grid_view_rounded,
                             label: _gridMode == 0 ? 'Izgara' : '${_gridMode}x',
                             active: _gridMode > 0,
@@ -908,66 +999,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _toolButton({
-    required IconData icon,
-    required String label,
-    required bool active,
-    required Color activeColor,
-    required VoidCallback onTap,
-  }) {
-    final Color bgColor =
-        active ? activeColor.withOpacity(0.18) : Colors.white.withOpacity(0.06);
-
-    final Color borderColor =
-        active ? activeColor.withOpacity(0.55) : Colors.white.withOpacity(0.10);
-
-    final Color iconColor = active ? activeColor : Colors.white;
-    final Color textColor = active ? activeColor : Colors.white70;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 68,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              height: 54,
-              width: 54,
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: borderColor, width: 1.2),
-                boxShadow: active
-                    ? [
-                        BoxShadow(
-                          color: activeColor.withOpacity(0.20),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
-                        )
-                      ]
-                    : null,
-              ),
-              child: Icon(icon, color: iconColor, size: 24),
-            ),
-            const SizedBox(height: 7),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: textColor,
-                fontSize: 11,
-                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1000,11 +1031,11 @@ class GridPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-class ScanCubePainter extends CustomPainter {
+class ReticlePainter extends CustomPainter {
   final bool active;
   final double progress;
 
-  ScanCubePainter({
+  ReticlePainter({
     required this.active,
     required this.progress,
   });
@@ -1012,27 +1043,26 @@ class ScanCubePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final mainColor = active ? Colors.cyanAccent : Colors.white70;
-    final glowColor = active
+    final glow = active
         ? Colors.cyanAccent.withOpacity(0.16)
-        : Colors.white.withOpacity(0.08);
+        : Colors.white.withOpacity(0.06);
 
-    final glowPaint = Paint()..color = glowColor;
-    final strokePaint = Paint()
-      ..color = mainColor.withOpacity(0.95)
+    final glowPaint = Paint()..color = glow;
+    final linePaint = Paint()
+      ..color = mainColor.withOpacity(0.96)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.2;
 
     final softPaint = Paint()
-      ..color = mainColor.withOpacity(0.28)
+      ..color = mainColor.withOpacity(0.25)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
+      ..strokeWidth = 1.1;
 
-    final pulse = 0.94 + (math.sin(progress * math.pi * 2) * 0.05);
-
+    final pulse = 0.95 + math.sin(progress * math.pi * 2) * 0.04;
     final rect = Rect.fromCenter(
       center: Offset(size.width / 2, size.height / 2),
-      width: size.width * 0.86 * pulse,
-      height: size.height * 0.86 * pulse,
+      width: size.width * 0.84 * pulse,
+      height: size.height * 0.84 * pulse,
     );
 
     canvas.drawRRect(
@@ -1040,48 +1070,47 @@ class ScanCubePainter extends CustomPainter {
       glowPaint,
     );
 
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final face = size.width * 0.30;
-    final depth = size.width * 0.14;
+    final c = Offset(size.width / 2, size.height / 2);
+    const ringRadius = 16.0;
 
-    final front = Rect.fromCenter(
-      center: Offset(cx - depth * 0.2, cy + depth * 0.16),
-      width: face,
-      height: face,
-    );
+    canvas.drawCircle(c, ringRadius, linePaint);
 
-    final back = front.shift(Offset(depth, -depth));
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(back, const Radius.circular(10)),
+    canvas.drawLine(
+      Offset(c.dx - 28, c.dy),
+      Offset(c.dx - 10, c.dy),
       softPaint,
     );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(front, const Radius.circular(10)),
-      strokePaint,
+    canvas.drawLine(
+      Offset(c.dx + 10, c.dy),
+      Offset(c.dx + 28, c.dy),
+      softPaint,
     );
-
-    canvas.drawLine(front.topLeft, back.topLeft, strokePaint);
-    canvas.drawLine(front.topRight, back.topRight, strokePaint);
-    canvas.drawLine(front.bottomLeft, back.bottomLeft, strokePaint);
-    canvas.drawLine(front.bottomRight, back.bottomRight, strokePaint);
+    canvas.drawLine(
+      Offset(c.dx, c.dy - 28),
+      Offset(c.dx, c.dy - 10),
+      softPaint,
+    );
+    canvas.drawLine(
+      Offset(c.dx, c.dy + 10),
+      Offset(c.dx, c.dy + 28),
+      softPaint,
+    );
 
     final scanPaint = Paint()
       ..color = mainColor.withOpacity(active ? 0.90 : 0.45)
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
 
-    final lineY = lerpDouble(front.top + 6, front.bottom - 6, progress)!;
+    final lineY = ui.lerpDouble(c.dy - 10, c.dy + 10, progress)!;
     canvas.drawLine(
-      Offset(front.left + 6, lineY),
-      Offset(front.right - 6, lineY),
+      Offset(c.dx - 10, lineY),
+      Offset(c.dx + 10, lineY),
       scanPaint,
     );
   }
 
   @override
-  bool shouldRepaint(covariant ScanCubePainter oldDelegate) {
+  bool shouldRepaint(covariant ReticlePainter oldDelegate) {
     return oldDelegate.active != active || oldDelegate.progress != progress;
   }
 }
