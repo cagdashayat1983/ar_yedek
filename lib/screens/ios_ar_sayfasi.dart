@@ -22,8 +22,10 @@ class IosArSayfasi extends StatefulWidget {
 class _IosArSayfasiState extends State<IosArSayfasi>
     with SingleTickerProviderStateMixin {
   static const String _nodeId = 'image_plane_node';
-  static const double _defaultOpacity = 0.82;
-  static const double _planeVisualSink = 0.0015;
+  static const double _defaultOpacity = 0.88;
+
+  // Zemine biraz daha bastırıp "havada" hissini azaltır.
+  static const double _planeVisualSink = 0.004;
 
   final GlobalKey _sceneKey = GlobalKey();
 
@@ -40,6 +42,13 @@ class _IosArSayfasiState extends State<IosArSayfasi>
   bool _mirrored = false;
   bool _isTrackingNormal = true;
   bool _surfaceReady = false;
+
+  // Pinch sonrası drag başlamasın diye
+  bool _gestureWasMultiTouch = false;
+  bool _ignoreDragUntilNextGesture = false;
+
+  // Eski async drag sonuçları geri dönüp node'u oynatmasın diye
+  int _dragEpoch = 0;
 
   int _gridMode = 0;
   int _tiltMode = 0;
@@ -69,6 +78,8 @@ class _IosArSayfasiState extends State<IosArSayfasi>
 
   Timer? _toastTimer;
   Timer? _placementProbeTimer;
+  Timer? _gestureCooldownTimer;
+
   String _toastText = '';
   String _lastTrackingToastKey = '';
 
@@ -87,6 +98,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
   void dispose() {
     _toastTimer?.cancel();
     _placementProbeTimer?.cancel();
+    _gestureCooldownTimer?.cancel();
     _reticleAnim.dispose();
     arkitController?.dispose();
     super.dispose();
@@ -283,6 +295,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       (_) async {
         if (!mounted) return;
         if (_hasModel) return;
+
         if (!_isTrackingNormal) {
           if (_surfaceReady || _currentPlacementHit != null) {
             setState(() {
@@ -372,7 +385,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
         });
       }
 
-      _showToast('✅ Resim zemine kusursuz oturdu!');
+      _showToast('✅ Resim zemine oturdu!');
     } catch (e) {
       _showToast('❌ Yerleştirme hatası: $e');
     } finally {
@@ -415,29 +428,72 @@ class _IosArSayfasiState extends State<IosArSayfasi>
   }
 
   void _onScaleStart(ScaleStartDetails d) {
+    _gestureCooldownTimer?.cancel();
     _baseScale = _scale;
     _baseRotZRad = _rotZRad;
+
+    _gestureWasMultiTouch = false;
+    _ignoreDragUntilNextGesture = false;
+
+    _dragEpoch++;
+    _queuedDragPoint = null;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
     if (!_hasModel || _tapLocked) return;
 
     if (d.pointerCount > 1) {
+      _gestureWasMultiTouch = true;
+      _ignoreDragUntilNextGesture = true;
+      _dragEpoch++;
+      _queuedDragPoint = null;
+
       setState(() {
         if (!_mirrored) {
           _scale = (_baseScale * d.scale).clamp(0.05, 3.0).toDouble();
           _rotZRad = _baseRotZRad - d.rotation;
         }
       });
+
       unawaited(_updateNodeTransform());
       return;
     }
 
-    unawaited(_dragNodeOnPlane(d.focalPoint));
+    if (_gestureWasMultiTouch || _ignoreDragUntilNextGesture) {
+      return;
+    }
+
+    if (d.focalPointDelta.distance < 1.8) {
+      return;
+    }
+
+    final int epoch = _dragEpoch;
+    unawaited(_dragNodeOnPlane(d.focalPoint, epoch));
   }
 
-  Future<void> _dragNodeOnPlane(Offset globalPoint) async {
+  void _onScaleEnd(ScaleEndDetails d) {
+    if (_gestureWasMultiTouch) {
+      _ignoreDragUntilNextGesture = true;
+      _dragEpoch++;
+      _queuedDragPoint = null;
+
+      _gestureCooldownTimer?.cancel();
+      _gestureCooldownTimer = Timer(const Duration(milliseconds: 140), () {
+        if (!mounted) return;
+        _gestureWasMultiTouch = false;
+        _ignoreDragUntilNextGesture = false;
+      });
+      return;
+    }
+
+    _gestureWasMultiTouch = false;
+    _ignoreDragUntilNextGesture = false;
+  }
+
+  Future<void> _dragNodeOnPlane(Offset globalPoint, int epoch) async {
     if (!_hasModel || _tapLocked || !_isTrackingNormal) return;
+    if (epoch != _dragEpoch) return;
+    if (_gestureWasMultiTouch || _ignoreDragUntilNextGesture) return;
 
     final controller = arkitController;
     if (controller == null) return;
@@ -450,7 +506,8 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     _isDragHitTestBusy = true;
 
     try {
-      final renderBox = _sceneKey.currentContext?.findRenderObject() as RenderBox?;
+      final renderBox =
+          _sceneKey.currentContext?.findRenderObject() as RenderBox?;
       if (renderBox == null || !renderBox.hasSize) return;
 
       final local = renderBox.globalToLocal(globalPoint);
@@ -460,6 +517,10 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       final ny = (local.dy / size.height).clamp(0.0, 1.0).toDouble();
 
       final hit = await _performBestHitTest(nx, ny);
+
+      if (!mounted) return;
+      if (epoch != _dragEpoch) return;
+      if (_gestureWasMultiTouch || _ignoreDragUntilNextGesture) return;
       if (hit == null) return;
 
       final col = hit.worldTransform.getColumn(3);
@@ -478,10 +539,15 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     } finally {
       _isDragHitTestBusy = false;
 
+      if (epoch != _dragEpoch) return;
+      if (_gestureWasMultiTouch || _ignoreDragUntilNextGesture) return;
+
       final pending = _queuedDragPoint;
       _queuedDragPoint = null;
+
       if (pending != null && mounted) {
-        unawaited(_dragNodeOnPlane(pending));
+        final int nextEpoch = _dragEpoch;
+        unawaited(_dragNodeOnPlane(pending, nextEpoch));
       }
     }
   }
@@ -530,8 +596,12 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       _tiltMode = 0;
       _mirrored = false;
       _opacity = _defaultOpacity;
+      _gestureWasMultiTouch = false;
+      _ignoreDragUntilNextGesture = false;
+      _queuedDragPoint = null;
     });
 
+    _dragEpoch++;
     _showToast('Temizlendi. Tekrar yerleştirebilirsin.');
   }
 
@@ -565,8 +635,11 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     if (controller == null) return;
 
     final oldLift = _liftMeters;
-    final newLift = (_liftMeters + delta).clamp(-0.03, 0.30).toDouble();
+
+    // Fazla havaya çıkmasın diye dar aralık
+    final newLift = (_liftMeters + delta).clamp(-0.005, 0.04).toDouble();
     final appliedDelta = newLift - oldLift;
+
     if (appliedDelta == 0.0) return;
 
     setState(() => _liftMeters = newLift);
@@ -578,10 +651,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     );
 
     await controller.update(nodeName!, node: imageNode!);
-  }
-
-  void _comingSoon(String label) {
-    _showToast('$label şu an pasif.');
   }
 
   Widget _glassPanel({
@@ -675,7 +744,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
             animation: _reticleAnim,
             builder: (context, child) {
               final t = _reticleAnim.value;
-              final pulse = 0.96 + math.sin(t * math.pi * 2) * 0.05;
+              final pulse = 0.95 + math.sin(t * math.pi * 2) * 0.04;
 
               return Column(
                 mainAxisSize: MainAxisSize.min,
@@ -736,7 +805,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
               showStatistics: kDebugMode,
             ),
           ),
-
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
@@ -747,12 +815,11 @@ class _IosArSayfasiState extends State<IosArSayfasi>
               },
               onScaleStart: _hasModel ? _onScaleStart : null,
               onScaleUpdate: _hasModel ? _onScaleUpdate : null,
+              onScaleEnd: _hasModel ? _onScaleEnd : null,
               child: const SizedBox.expand(),
             ),
           ),
-
           if (!_hasModel) _buildReticle(),
-
           if (_gridMode > 0)
             Positioned.fill(
               child: IgnorePointer(
@@ -761,7 +828,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                 ),
               ),
             ),
-
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
@@ -825,7 +891,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
               ),
             ),
           ),
-
           if (_toastText.isNotEmpty)
             Positioned(
               top: MediaQuery.of(context).padding.top + 76,
@@ -841,8 +906,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.68),
                       borderRadius: BorderRadius.circular(16),
-                      border:
-                          Border.all(color: Colors.white.withOpacity(0.08)),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
                     ),
                     child: Text(
                       _toastText,
@@ -857,7 +921,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                 ),
               ),
             ),
-
           Positioned(
             left: 12,
             right: 12,
@@ -904,27 +967,20 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                   ),
                   const SizedBox(height: 10),
                   _glassPanel(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 12),
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
                       child: Row(
                         children: [
                           _toolButton(
-                            icon: Icons.videocam_outlined,
-                            label: 'Kayıt',
-                            active: false,
-                            activeColor: Colors.redAccent,
-                            onTap: () => _comingSoon('Kayıt'),
-                          ),
-                          const SizedBox(width: 10),
-                          _toolButton(
                             icon: _tapLocked ? Icons.lock : Icons.lock_open,
                             label: 'Kilit',
                             active: _tapLocked,
                             activeColor: Colors.redAccent,
-                            onTap: () => setState(() => _tapLocked = !_tapLocked),
+                            onTap: () =>
+                                setState(() => _tapLocked = !_tapLocked),
                           ),
                           const SizedBox(width: 10),
                           _toolButton(
@@ -981,14 +1037,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                             active: _gridMode > 0,
                             activeColor: Colors.greenAccent,
                             onTap: _toggleGrid,
-                          ),
-                          const SizedBox(width: 10),
-                          _toolButton(
-                            icon: Icons.flash_on_rounded,
-                            label: 'Flaş',
-                            active: false,
-                            activeColor: Colors.amber,
-                            onTap: () => _comingSoon('Flaş'),
                           ),
                         ],
                       ),
