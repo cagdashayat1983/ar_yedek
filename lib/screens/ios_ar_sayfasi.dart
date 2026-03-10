@@ -22,8 +22,8 @@ class IosArSayfasi extends StatefulWidget {
 class _IosArSayfasiState extends State<IosArSayfasi>
     with SingleTickerProviderStateMixin {
   static const String _nodeId = 'image_plane_node';
-  static const double _defaultOpacity = 0.90;
-  static const double _planeVisualSink = 0.005;
+  static const double _defaultOpacity = 1.0;
+  static const double _planeVisualSink = 0.004;
 
   final GlobalKey _sceneKey = GlobalKey();
 
@@ -44,7 +44,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
   bool _surfaceReady = false;
 
   bool _isScalingGesture = false;
-  bool _didDragInCurrentTouch = false;
 
   int _gridMode = 0;
   int _tiltMode = 0;
@@ -71,8 +70,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
 
   bool _isNodeUpdateBusy = false;
   bool _nodeUpdateQueued = false;
-
-  Offset? _lastDragGlobalPoint;
 
   Timer? _toastTimer;
   Timer? _placementProbeTimer;
@@ -182,9 +179,11 @@ class _IosArSayfasiState extends State<IosArSayfasi>
   ARKitMaterial _buildMaterial() {
     return ARKitMaterial(
       diffuse: ARKitMaterialProperty.image(widget.imagePath),
-      emission: ARKitMaterialProperty.image(widget.imagePath),
+      transparent: ARKitMaterialProperty.image(widget.imagePath),
       transparency: _opacity,
+      lightingModelName: ARKitLightingModel.constant,
       doubleSided: true,
+      cullMode: ARKitCullMode.back,
     );
   }
 
@@ -442,8 +441,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
 
     if (_activePointers.length >= 2) {
       _isScalingGesture = true;
-      _didDragInCurrentTouch = false;
-      _lastDragGlobalPoint = null;
     }
   }
 
@@ -455,12 +452,9 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     final dx = event.delta.dx.clamp(-24.0, 24.0);
     final dy = event.delta.dy.clamp(-24.0, 24.0);
 
-    if (dx.abs() < 0.4 && dy.abs() < 0.4) return;
+    if (dx.abs() < 0.35 && dy.abs() < 0.35) return;
 
-    _didDragInCurrentTouch = true;
-    _lastDragGlobalPoint = event.position;
-
-    final moveFactor = (0.00095 + (_scale * 0.00022)).clamp(0.00085, 0.00145);
+    final moveFactor = (0.00080 + (_scale * 0.00018)).clamp(0.00078, 0.00132);
 
     _posX += dx * moveFactor;
     _posZ += dy * moveFactor;
@@ -473,19 +467,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     _activePointers.remove(event.pointer);
 
     if (_activePointers.isEmpty) {
-      final shouldSnap = !_isScalingGesture &&
-          _didDragInCurrentTouch &&
-          _lastDragGlobalPoint != null;
-
-      final snapPoint = _lastDragGlobalPoint;
-
       _isScalingGesture = false;
-      _didDragInCurrentTouch = false;
-      _lastDragGlobalPoint = null;
-
-      if (shouldSnap && snapPoint != null) {
-        unawaited(_reSnapToScreenPoint(snapPoint));
-      }
     }
   }
 
@@ -496,8 +478,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     _baseScale = _scale;
     _baseRotZRad = _rotZRad;
     _isScalingGesture = true;
-    _didDragInCurrentTouch = false;
-    _lastDragGlobalPoint = null;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
@@ -505,10 +485,8 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     if (!_hasModel || _tapLocked) return;
 
     setState(() {
-      if (!_mirrored) {
-        _scale = (_baseScale * d.scale).clamp(0.05, 3.0).toDouble();
-        _rotZRad = _baseRotZRad - d.rotation;
-      }
+      _scale = (_baseScale * d.scale).clamp(0.05, 2.4).toDouble();
+      _rotZRad = _baseRotZRad - d.rotation;
     });
 
     _applyCurrentTransformToNode();
@@ -516,35 +494,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
   }
 
   void _onScaleEnd(ScaleEndDetails d) {
-    // Drag tekrar ancak tüm parmaklar kalkınca Listener tarafında açılır.
-  }
-
-  Future<void> _reSnapToScreenPoint(Offset globalPoint) async {
-    if (!_hasModel || nodeName == null || arkitController == null) return;
-
-    final renderBox =
-        _sceneKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null || !renderBox.hasSize) return;
-
-    final local = renderBox.globalToLocal(globalPoint);
-    final size = renderBox.size;
-
-    final nx = (local.dx / size.width).clamp(0.0, 1.0).toDouble();
-    final ny = (local.dy / size.height).clamp(0.0, 1.0).toDouble();
-
-    final hit = await _performBestHitTest(nx, ny) ??
-        await _performBestHitTest(0.5, 0.58);
-
-    if (hit == null) return;
-
-    final col = hit.worldTransform.getColumn(3);
-    _posX = col.x;
-    _posZ = col.z;
-
-    _applyCurrentTransformToNode(
-      yOverride: col.y + _liftMeters - _planeVisualSink,
-    );
-    await _flushNodeUpdate();
+    // Drag ancak tüm parmaklar kalkınca tekrar açılır.
   }
 
   Future<void> _reSnapToCenterPlane() async {
@@ -589,8 +539,6 @@ class _IosArSayfasiState extends State<IosArSayfasi>
       _mirrored = false;
       _opacity = _defaultOpacity;
       _isScalingGesture = false;
-      _didDragInCurrentTouch = false;
-      _lastDragGlobalPoint = null;
       _activePointers.clear();
     });
 
@@ -788,6 +736,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
               onARKitViewCreated: _onARKitViewCreated,
               planeDetection: ARPlaneDetection.horizontal,
               enableTapRecognizer: false,
+              autoenablesDefaultLighting: true,
               showFeaturePoints: kDebugMode,
               showStatistics: kDebugMode,
             ),
@@ -948,7 +897,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
                             ),
                             child: Slider(
                               value: _opacity,
-                              min: 0.1,
+                              min: 0.35,
                               max: 1.0,
                               activeColor: Colors.cyanAccent,
                               inactiveColor: Colors.white24,
