@@ -35,6 +35,9 @@
         <key>UIMainStoryboardFile</key>
         <string>Main</string>
         
+        <key>GADApplicationIdentifier</key>
+        <string>ca-app-pub-3940256099942544~1458002511</string>
+        
         <key>NSCameraUsageDescription</key>
         <string>AR (Artırılmış Gerçeklik) deneyimi sunabilmemiz ve fotoğraf çekebilmeniz için kameranıza erişim izni gereklidir.</string>
         <key>NSPhotoLibraryUsageDescription</key>
