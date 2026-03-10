@@ -70,6 +70,7 @@ class _IosArSayfasiState extends State<IosArSayfasi>
 
   bool _isNodeUpdateBusy = false;
   bool _nodeUpdateQueued = false;
+  bool _isDragBusy = false; // EKLENDİ: Sürükleme kasmasını önlemek için
 
   Timer? _toastTimer;
   Timer? _placementProbeTimer;
@@ -444,23 +445,42 @@ class _IosArSayfasiState extends State<IosArSayfasi>
     }
   }
 
-  void _onPointerMove(PointerMoveEvent event) {
+  // DEĞİŞTİRİLDİ: Kameranın açısına göre AR zemininde doğru şekilde sürükleme işlemi
+  void _onPointerMove(PointerMoveEvent event) async {
     if (!_hasModel || _tapLocked) return;
     if (_isScalingGesture) return;
     if (_activePointers.length != 1) return;
 
-    final dx = event.delta.dx.clamp(-24.0, 24.0);
-    final dy = event.delta.dy.clamp(-24.0, 24.0);
+    if (_isDragBusy) return;
+    _isDragBusy = true;
 
-    if (dx.abs() < 0.35 && dy.abs() < 0.35) return;
+    try {
+      final size = MediaQuery.of(context).size;
+      final nx = (event.position.dx / size.width).clamp(0.0, 1.0);
+      final ny = (event.position.dy / size.height).clamp(0.0, 1.0);
 
-    final moveFactor = (0.00080 + (_scale * 0.00018)).clamp(0.00078, 0.00132);
+      final controller = arkitController;
+      if (controller == null) return;
 
-    _posX += dx * moveFactor;
-    _posZ += dy * moveFactor;
+      final results = await controller.performHitTest(x: nx, y: ny);
+      final hit = _pickBestPlaneHit(results);
 
-    _applyCurrentTransformToNode();
-    unawaited(_flushNodeUpdate());
+      if (hit != null && mounted) {
+        final col = hit.worldTransform.getColumn(3);
+
+        setState(() {
+          _posX = col.x;
+          _posZ = col.z;
+        });
+
+        _applyCurrentTransformToNode(
+          yOverride: col.y + _liftMeters - _planeVisualSink,
+        );
+        await _flushNodeUpdate();
+      }
+    } finally {
+      _isDragBusy = false;
+    }
   }
 
   void _onPointerUpOrCancel(PointerEvent event) {
