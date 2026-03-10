@@ -8,12 +8,15 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/energy_service.dart';
+import '../services/ad_service.dart';
+import '../services/subscription_service.dart';
+
 import 'tutorial_screen.dart';
 import 'profile_screen.dart';
 import 'subscription_screen.dart';
 import 'home_screen.dart';
 
-// 1. ZORLUK SEVİYESİ
 enum Difficulty { easy, medium, hard }
 
 extension DifficultyExtension on Difficulty {
@@ -40,7 +43,6 @@ extension DifficultyExtension on Difficulty {
   }
 }
 
-// 2. DERS MODELİ
 class LessonModel {
   final String title;
   final String? coverImage;
@@ -48,8 +50,7 @@ class LessonModel {
   final Difficulty difficulty;
   bool isLocked;
   bool isCompleted;
-
-  // EKLENDİ: Gerçek ilerleme için mevcut adım
+  bool isPremium;
   int currentStep;
 
   LessonModel({
@@ -59,6 +60,7 @@ class LessonModel {
     required this.difficulty,
     this.isLocked = false,
     this.isCompleted = false,
+    this.isPremium = false,
     this.currentStep = 0,
   });
 }
@@ -74,18 +76,16 @@ class LearnScreen extends StatefulWidget {
 class _LearnScreenState extends State<LearnScreen> {
   List<LessonModel> _lessons = [];
   bool _isLoading = true;
-
-  // EKLENDİ: hata yönetimi
   String? _errorMessage;
-
-  // EKLENDİ: zorluk filtresi
   Difficulty? _selectedDifficulty;
-
   final int _bottomIndex = 1;
 
   int _userXp = 0;
   final int _nextLevelThreshold = 2000;
   String _userRank = "Çaylak";
+
+  bool _isProUser = false;
+  int _currentEnergy = 0;
 
   final String _workerBase = "https://hayatify-api.cagdasyucedag.workers.dev";
 
@@ -108,6 +108,9 @@ class _LearnScreenState extends State<LearnScreen> {
 
       _userXp = prefs.getInt('total_xp') ?? 0;
       _userRank = _userXp >= _nextLevelThreshold ? "Çizimci" : "Çaylak";
+
+      _isProUser = await SubscriptionService.isProUser();
+      _currentEnergy = await EnergyService.getEnergy();
 
       final uri = Uri.parse("$_workerBase/").replace(
         queryParameters: {'folder': 'tutorial'},
@@ -133,9 +136,14 @@ class _LearnScreenState extends State<LearnScreen> {
 
       for (var file in tutorialFiles) {
         final fileName = file.split('/').last;
-
         if (fileName.contains('_')) {
-          final lessonPrefix = fileName.split('_')[0];
+          List<String> parts = fileName.split('_');
+          String lessonPrefix = parts[0];
+
+          if (lessonPrefix.toLowerCase() == 'pro' && parts.length > 1) {
+            lessonPrefix = 'pro_${parts[1]}';
+          }
+
           groups.putIfAbsent(lessonPrefix, () => []);
           groups[lessonPrefix]!.add(fileName);
         }
@@ -148,6 +156,8 @@ class _LearnScreenState extends State<LearnScreen> {
         List<String> stepImages = [];
         Difficulty diff = Difficulty.medium;
 
+        bool isPremiumLesson = lessonPrefix.toLowerCase().startsWith('pro_');
+
         for (var file in files) {
           final lowerFileName = file.toLowerCase();
           final imageUrl = Uri.parse("$_workerBase/image").replace(
@@ -159,7 +169,6 @@ class _LearnScreenState extends State<LearnScreen> {
 
           if (lowerFileName.contains('cover')) {
             coverImg = imageUrl;
-
             if (lowerFileName.contains('easy')) {
               diff = Difficulty.easy;
             } else if (lowerFileName.contains('hard')) {
@@ -186,13 +195,13 @@ class _LearnScreenState extends State<LearnScreen> {
           return numA.compareTo(numB);
         });
 
-        // Boyama/kapak en sona ekleniyor
         if (coverImg != null) {
           stepImages.add(coverImg);
         }
 
-        final displayTitle =
-            lessonPrefix[0].toUpperCase() + lessonPrefix.substring(1);
+        String rawTitle =
+            isPremiumLesson ? lessonPrefix.substring(4) : lessonPrefix;
+        final displayTitle = rawTitle[0].toUpperCase() + rawTitle.substring(1);
 
         if (stepImages.isNotEmpty || coverImg != null) {
           loadedLessons.add(
@@ -201,23 +210,28 @@ class _LearnScreenState extends State<LearnScreen> {
               coverImage: coverImg,
               steps: stepImages,
               difficulty: diff,
+              isPremium: isPremiumLesson,
             ),
           );
         }
       });
 
-      loadedLessons.sort((a, b) => a.title.compareTo(b.title));
+      // ✅ YENİ: Ücretsiz olanlar daima en başta listelenir!
+      loadedLessons.sort((a, b) {
+        if (a.isPremium != b.isPremium) {
+          return a.isPremium ? 1 : -1;
+        }
+        return a.title.compareTo(b.title);
+      });
 
       for (int i = 0; i < loadedLessons.length; i++) {
         final lesson = loadedLessons[i];
-
         final isDone = prefs.getBool('completed_${lesson.title}') ?? false;
         final savedStep = prefs.getInt('progress_${lesson.title}') ?? 0;
 
         lesson.isCompleted = isDone;
         lesson.isLocked = false;
 
-        // Güvenli ilerleme hesabı
         if (lesson.steps.isEmpty) {
           lesson.currentStep = 0;
         } else if (isDone) {
@@ -236,7 +250,6 @@ class _LearnScreenState extends State<LearnScreen> {
       }
     } catch (e) {
       debugPrint("LESSON LOAD ERROR: $e");
-
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -257,7 +270,27 @@ class _LearnScreenState extends State<LearnScreen> {
         .toList();
   }
 
+  // ✅ YENİ: Ücretsiz dersler enerji harcamaz.
   void _onLessonTap(LessonModel lesson) async {
+    if (_isProUser) {
+      _checkLessonProgressAndStart(lesson);
+      return;
+    }
+
+    if (!lesson.isPremium) {
+      _checkLessonProgressAndStart(lesson);
+      return;
+    }
+
+    if (lesson.isCompleted || lesson.currentStep > 0) {
+      _checkLessonProgressAndStart(lesson);
+      return;
+    }
+
+    _showPremiumUpsellSheet(lesson);
+  }
+
+  void _checkLessonProgressAndStart(LessonModel lesson) async {
     final prefs = await SharedPreferences.getInstance();
     int? savedStep = prefs.getInt('progress_${lesson.title}');
 
@@ -266,6 +299,274 @@ class _LearnScreenState extends State<LearnScreen> {
     } else {
       _startTutorial(lesson, 0);
     }
+  }
+
+  void _showPremiumUpsellSheet(LessonModel lesson) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) {
+        return SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(Icons.close_rounded,
+                            color: Colors.grey, size: 28),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (lesson.coverImage != null)
+                  Container(
+                    width: 86,
+                    height: 86,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      color: lesson.difficulty.color.withValues(alpha: 0.10),
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    child: Image.network(lesson.coverImage!),
+                  ),
+                const SizedBox(height: 16),
+                Text(
+                  'Bu ders Pro’ya özel',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Premium dersleri açmak için Pro\'ya geçebilir veya 1 Enerji harcayabilirsin.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    height: 1.45,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      if (_currentEnergy > 0) {
+                        await EnergyService.consumeEnergy();
+                        setState(() => _currentEnergy -= 1);
+                        _checkLessonProgressAndStart(lesson);
+                      } else {
+                        _showEnergyEmptyDialog(lesson);
+                      }
+                    },
+                    icon: Icon(_currentEnergy > 0
+                        ? Icons.bolt_rounded
+                        : Icons.play_circle_filled_rounded),
+                    label: Text(
+                      _currentEnergy > 0
+                          ? '⚡ 1 Enerji Harca ve Başla'
+                          : '📺 Video İzle ve Aç',
+                      style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w700, fontSize: 14),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD97706),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const SubscriptionScreen()))
+                          .then((_) => _loadLessonsAndXp(isRefresh: true));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF111827),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Text(
+                      '💎 Pro\'ya Geç (Sınırsız)',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEnergyEmptyDialog(LessonModel lesson) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        contentPadding: EdgeInsets.zero,
+        content: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFEF3C7),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.bolt_rounded,
+                        color: Color(0xFFD97706), size: 48),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Enerjin Bitti!',
+                    style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 20,
+                        color: const Color(0xFF0F172A)),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Yeni derse başlamak için kısa bir video izle ve 3 Enerji kazan.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                        fontSize: 14, color: const Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _playRewardedAdAndContinue(lesson);
+                      },
+                      icon: const Icon(Icons.play_circle_filled_rounded),
+                      label: Text(
+                        'Video İzle (+3 ⚡)',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF111827),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const SubscriptionScreen()))
+                          .then((_) => _loadLessonsAndXp(isRefresh: true));
+                    },
+                    child: Text(
+                      'Reklamları Kaldır (Pro)',
+                      style: GoogleFonts.poppins(
+                          color: const Color(0xFF6366F1),
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              right: 8,
+              top: 8,
+              child: IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.grey),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _playRewardedAdAndContinue(LessonModel lesson) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    AdService.showRewardedAd(
+      onReward: () async {
+        Navigator.pop(context);
+        await EnergyService.rewardEnergy(3);
+        setState(() => _currentEnergy = 3);
+
+        await EnergyService.consumeEnergy();
+        setState(() => _currentEnergy -= 1);
+        _checkLessonProgressAndStart(lesson);
+      },
+      onFailed: () {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Reklam şu an hazır değil, lütfen biraz bekle.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      },
+    );
   }
 
   void _showResumeDialog(LessonModel lesson, int step) {
@@ -338,6 +639,30 @@ class _LearnScreenState extends State<LearnScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
+          if (!_isProUser)
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.bolt_rounded,
+                        color: Color(0xFFD97706), size: 16),
+                    const SizedBox(width: 4),
+                    Text('$_currentEnergy',
+                        style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFFD97706),
+                            fontSize: 14)),
+                  ],
+                ),
+              ),
+            ),
           Center(
             child: Padding(
               padding: const EdgeInsets.only(right: 15),
@@ -369,7 +694,6 @@ class _LearnScreenState extends State<LearnScreen> {
   }
 
   Widget _buildBodyContent(List<LessonModel> filteredLessons) {
-    // Hata durumu
     if (_errorMessage != null) {
       return RefreshIndicator(
         onRefresh: _onRefresh,
@@ -424,7 +748,6 @@ class _LearnScreenState extends State<LearnScreen> {
       );
     }
 
-    // Boş durum
     if (_lessons.isEmpty) {
       return RefreshIndicator(
         onRefresh: _onRefresh,
@@ -455,7 +778,6 @@ class _LearnScreenState extends State<LearnScreen> {
       );
     }
 
-    // Filtre sonucu boşsa
     if (filteredLessons.isEmpty) {
       return RefreshIndicator(
         onRefresh: _onRefresh,
@@ -503,7 +825,6 @@ class _LearnScreenState extends State<LearnScreen> {
       );
     }
 
-    // Normal liste
     return RefreshIndicator(
       onRefresh: _onRefresh,
       child: ListView.builder(
@@ -636,11 +957,11 @@ class _LearnScreenState extends State<LearnScreen> {
         });
       },
       selectedColor: chipColor,
-      backgroundColor: chipColor.withOpacity(0.08),
+      backgroundColor: chipColor.withValues(alpha: 0.08),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
         side: BorderSide(
-          color: chipColor.withOpacity(0.25),
+          color: chipColor.withValues(alpha: 0.25),
         ),
       ),
       showCheckmark: false,
@@ -650,6 +971,7 @@ class _LearnScreenState extends State<LearnScreen> {
 
   Widget _buildLessonCard(LessonModel lesson) {
     final Color themeColor = lesson.difficulty.color;
+    final bool locked = lesson.isPremium && !_isProUser;
 
     final int totalSteps = lesson.steps.length;
     final int currentStep = lesson.currentStep.clamp(0, totalSteps);
@@ -673,10 +995,13 @@ class _LearnScreenState extends State<LearnScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: themeColor.withOpacity(0.2)),
+          border: Border.all(
+              color: locked
+                  ? const Color(0xFFFFE7B0)
+                  : themeColor.withValues(alpha: 0.2)),
           boxShadow: [
             BoxShadow(
-              color: themeColor.withOpacity(0.05),
+              color: themeColor.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             )
@@ -687,7 +1012,7 @@ class _LearnScreenState extends State<LearnScreen> {
             Container(
               width: 110,
               decoration: BoxDecoration(
-                color: themeColor.withOpacity(0.1),
+                color: themeColor.withValues(alpha: 0.1),
                 borderRadius:
                     const BorderRadius.horizontal(left: Radius.circular(24)),
               ),
@@ -724,42 +1049,51 @@ class _LearnScreenState extends State<LearnScreen> {
                         )
                       else
                         Icon(Icons.brush, color: themeColor, size: 40),
-                      if (lesson.isCompleted)
+                      if (locked)
                         Positioned(
                           top: 8,
                           right: 8,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 4,
+                                horizontal: 6, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFFBEB),
+                              borderRadius: BorderRadius.circular(8),
+                              border:
+                                  Border.all(color: const Color(0xFFFFE7B0)),
                             ),
+                            child: Text(
+                              "PRO",
+                              style: GoogleFonts.poppins(
+                                  color: const Color(0xFFD97706),
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        )
+                      else if (lesson.isCompleted)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 4),
                             decoration: BoxDecoration(
                               color: Colors.green,
                               borderRadius: BorderRadius.circular(8),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.2),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 2),
-                                )
-                              ],
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(
-                                  Icons.check_circle,
-                                  color: Colors.white,
-                                  size: 10,
-                                ),
+                                const Icon(Icons.check_circle,
+                                    color: Colors.white, size: 10),
                                 const SizedBox(width: 4),
                                 Text(
                                   "YAPILDI",
                                   style: GoogleFonts.poppins(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                  ),
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800),
                                 ),
                               ],
                             ),
@@ -789,10 +1123,13 @@ class _LearnScreenState extends State<LearnScreen> {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      lesson.isCompleted ? "TEKRAR ÇİZ" : "+100 XP KAZAN",
+                      lesson.isCompleted
+                          ? "TEKRAR ÇİZ"
+                          : (locked ? "PRO İLE AÇ" : "+100 XP KAZAN"),
                       style: TextStyle(
-                        color:
-                            lesson.isCompleted ? Colors.blueAccent : themeColor,
+                        color: lesson.isCompleted
+                            ? Colors.blueAccent
+                            : (locked ? const Color(0xFFD97706) : themeColor),
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
                       ),
@@ -803,8 +1140,6 @@ class _LearnScreenState extends State<LearnScreen> {
                       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
                     const SizedBox(height: 8),
-
-                    // EKLENDİ: gerçek ilerleme bilgisi
                     Text(
                       progressText,
                       style: GoogleFonts.poppins(
@@ -816,8 +1151,6 @@ class _LearnScreenState extends State<LearnScreen> {
                       ),
                     ),
                     const SizedBox(height: 6),
-
-                    // EKLENDİ: mini progress bar
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: LinearProgressIndicator(
@@ -831,7 +1164,8 @@ class _LearnScreenState extends State<LearnScreen> {
                 ),
               ),
             ),
-            const Icon(Icons.chevron_right, color: Colors.grey),
+            Icon(locked ? Icons.lock_rounded : Icons.chevron_right,
+                color: locked ? const Color(0xFFD97706) : Colors.grey),
             const SizedBox(width: 10),
           ],
         ),
@@ -854,7 +1188,7 @@ class _LearnScreenState extends State<LearnScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
-          );
+          ).then((_) => _loadLessonsAndXp(isRefresh: true));
         } else if (index == 3) {
           Navigator.push(
             context,

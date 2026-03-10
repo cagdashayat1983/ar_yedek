@@ -51,6 +51,9 @@ dependencies:
   http: ^1.6.0
   cached_network_image: ^3.3.1
 
+  # ✅ REKLAM MOTORU EKLENDİ
+  google_mobile_ads: ^5.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

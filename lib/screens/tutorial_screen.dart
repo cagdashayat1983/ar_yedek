@@ -157,27 +157,119 @@ class _TutorialScreenState extends State<TutorialScreen>
     }
   }
 
+  // ✅ YENİ VE ZEKİ SESLİ KOMUT MOTORU (Çakışma Çözücü)
   void _handleVoiceCommand(String spokenWords) {
     final clean = spokenWords.toLowerCase().trim();
-    String newText = clean;
-    if (clean.startsWith(_lastProcessedText) && _lastProcessedText.isNotEmpty) {
-      newText = clean.substring(_lastProcessedText.length).trim();
-    } else {
-      newText = clean;
-    }
+    if (clean.isEmpty) return;
 
-    if (newText.isEmpty) return;
+    // Aynı kelime grubu tekrar gelirse (partial result) spam yapmasını engelle
+    if (clean == _lastProcessedText) return;
 
-    if (DateTime.now().difference(_lastCommandTime).inMilliseconds <= 1200) {
-      _lastProcessedText = clean;
+    // ⚡ Bekleme süresi 700ms'ye indirildi (Daha atik tepki verir)
+    if (DateTime.now().difference(_lastCommandTime).inMilliseconds <= 700) {
       return;
     }
 
-    final t = newText
+    // Sadece son söylenen 3 kelimeye odaklan, geçmişte kalan komutları çöpe at
+    List<String> rawWords = clean.split(" ");
+    if (rawWords.length > 3) {
+      rawWords = rawWords.sublist(rawWords.length - 3);
+    }
+
+    String t = rawWords
+        .join(" ")
         .replaceAll(RegExp(r"[^\w\sçğıöşü%\.]"), " ")
         .replaceAll(RegExp(r"\s+"), " ")
         .trim();
 
+    bool commandMatched = false;
+
+    // --- 1. İLERİ / GERİ (SON SÖYLENEN GEÇERLİDİR) ---
+    final nextKeys = [
+      "next",
+      "go",
+      "forward",
+      "ileri",
+      "ilerle",
+      "sonraki",
+      "devam",
+      "geç",
+      "gec"
+    ];
+    final prevKeys = [
+      "back",
+      "prev",
+      "previous",
+      "geri",
+      "geriye",
+      "önceki",
+      "onceki",
+      "dön",
+      "don"
+    ];
+
+    int lastNextIndex = -1;
+    int lastPrevIndex = -1;
+
+    // Cümle içindeki en son "İleri" ve en son "Geri" kelimesinin pozisyonunu bul
+    for (var k in nextKeys) {
+      final idx = t.lastIndexOf(k);
+      if (idx > lastNextIndex) lastNextIndex = idx;
+    }
+    for (var k in prevKeys) {
+      final idx = t.lastIndexOf(k);
+      if (idx > lastPrevIndex) lastPrevIndex = idx;
+    }
+
+    // Eğer ikisinden biri söylendiyse (Çakışma varsa en son söyleneni yap)
+    if (lastNextIndex != -1 || lastPrevIndex != -1) {
+      if (lastNextIndex > lastPrevIndex) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _nextStep());
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _prevStep());
+      }
+      commandMatched = true;
+    }
+
+    // --- 2. KİLİTLE / AÇ ---
+    if (!commandMatched) {
+      final lockKeys = [
+        "lock",
+        "freeze",
+        "kilitle",
+        "kilit",
+        "sabitle",
+        "dondur"
+      ];
+      final unlockKeys = [
+        "unlock",
+        "unfreeze",
+        "aç",
+        "ac",
+        "serbest",
+        "çöz",
+        "coz"
+      ];
+
+      int lastLockIndex = -1;
+      int lastUnlockIndex = -1;
+
+      for (var k in lockKeys) {
+        final idx = t.lastIndexOf(k);
+        if (idx > lastLockIndex) lastLockIndex = idx;
+      }
+      for (var k in unlockKeys) {
+        final idx = t.lastIndexOf(k);
+        if (idx > lastUnlockIndex) lastUnlockIndex = idx;
+      }
+
+      if (lastLockIndex != -1 || lastUnlockIndex != -1) {
+        _setLock(lastLockIndex > lastUnlockIndex);
+        commandMatched = true;
+      }
+    }
+
+    // Basit komutlar için yardımcı fonksiyon
     bool hasAny(List<String> keys) {
       final words = t.split(" ");
       return keys.any((k) {
@@ -186,33 +278,21 @@ class _TutorialScreenState extends State<TutorialScreen>
       });
     }
 
-    bool commandMatched = false;
-
-    final goStepKeys = <String>["step", "adım", "adıma", "git", "geç", "gec"];
-    if (hasAny(goStepKeys)) {
-      final step = _extractStepNumber(t);
-      if (step != null) {
-        _goToStep(step);
-        commandMatched = true;
-      }
-    }
-
+    // --- 3. DİĞER KOMUTLAR ---
     if (!commandMatched) {
-      final opacityKeys = <String>[
+      final opacityKeys = [
         "opacity",
-        "transparent",
-        "transparency",
-        "alpha",
-        "opaklık",
-        "opaklik",
         "saydamlık",
         "saydamlik",
         "şeffaflık",
         "seffaflik",
-        "görünürlük",
-        "gorunurluk"
+        "opaklık",
+        "opaklik",
+        "yüzde",
+        "percent",
+        "görünürlük"
       ];
-      if (hasAny(opacityKeys)) {
+      if (hasAny(opacityKeys) || t.contains("%")) {
         final value = _extractOpacityValue(t);
         if (value != null) {
           _setOpacity(value);
@@ -222,13 +302,7 @@ class _TutorialScreenState extends State<TutorialScreen>
     }
 
     if (!commandMatched) {
-      final gridKeys = <String>[
-        "grid",
-        "ızgara",
-        "izgara",
-        "kılavuz",
-        "kilavuz"
-      ];
+      final gridKeys = ["grid", "ızgara", "izgara", "kılavuz", "kilavuz"];
       if (hasAny(gridKeys)) {
         final grid = _extractGridValue(t);
         if (grid != null) {
@@ -241,36 +315,7 @@ class _TutorialScreenState extends State<TutorialScreen>
     }
 
     if (!commandMatched) {
-      final lockKeys = <String>[
-        "lock",
-        "freeze",
-        "kilitle",
-        "kilit",
-        "sabitle",
-        "dondur"
-      ];
-      final unlockKeys = <String>[
-        "unlock",
-        "unfreeze",
-        "kilidi aç",
-        "kilidi ac",
-        "aç",
-        "ac",
-        "serbest",
-        "çöz",
-        "coz"
-      ];
-      final wantsLock = hasAny(lockKeys);
-      final wantsUnlock = hasAny(unlockKeys);
-
-      if (wantsLock != wantsUnlock) {
-        _setLock(wantsLock);
-        commandMatched = true;
-      }
-    }
-
-    if (!commandMatched) {
-      final flipKeys = <String>[
+      final flipKeys = [
         "flip",
         "mirror",
         "ayna",
@@ -286,44 +331,22 @@ class _TutorialScreenState extends State<TutorialScreen>
     }
 
     if (!commandMatched) {
-      final nextKeys = <String>[
-        "next",
-        "go",
-        "forward",
-        "ileri",
-        "ilerle",
-        "sonraki",
-        "devam"
-      ];
-      final prevKeys = <String>[
-        "back",
-        "prev",
-        "previous",
-        "geri",
-        "geriye",
-        "önceki",
-        "onceki",
-        "dön",
-        "don"
-      ];
-
-      final isNext = hasAny(nextKeys);
-      final isPrev = hasAny(prevKeys);
-
-      if (isNext != isPrev) {
-        if (isNext) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _nextStep());
-        } else {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _prevStep());
+      final goStepKeys = ["step", "adım", "adıma", "git"];
+      if (hasAny(goStepKeys)) {
+        final step = _extractStepNumber(t);
+        if (step != null) {
+          _goToStep(step);
+          commandMatched = true;
         }
-        commandMatched = true;
       }
     }
 
+    // Eğer komutlardan biri çalıştıysa, son çalıştırılan olarak hafızaya kazı
     if (commandMatched) {
       _lastProcessedText = clean;
       _lastCommandTime = DateTime.now();
-      debugPrint("✅ KOMUT ÇALIŞTI. Yeni Hafıza: $_lastProcessedText");
+      debugPrint("✅ KOMUT ÇALIŞTI: $t");
+      HapticFeedback.mediumImpact(); // Kullanıcı anlaşıldığını hissetsin
     }
   }
 

@@ -147,21 +147,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     }
   }
 
+  // ✅ YENİ: Bütün kategoriler şartsız şurtsuz içeri alır!
+  // (Satışlar artık şablonların içinde yapılacak)
   void _openCategory(CategoryModel cat) {
-    final showLock = cat.isPremium && !_isPro;
-
     HapticFeedback.mediumImpact();
-
-    if (showLock) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const SubscriptionScreen(),
-        ),
-      );
-      return;
-    }
-
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -229,6 +218,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   String _categoryBadge(CategoryModel cat, BuildContext context) {
     final key = cat.titleKey.toLowerCase();
 
+    // Premium olmasını umursamıyoruz, badge rengi değişecek ama hepsi açılacak.
     if (cat.isPremium) return 'PRO';
     if (key.contains('animal') || key.contains('anime')) {
       return _txt(context, 'Popüler', 'Popular');
@@ -271,16 +261,16 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   String _ctaTitle(BuildContext context) {
     return _txt(
       context,
-      'Tüm premium kategorilerin kilidini aç',
-      'Unlock all premium categories',
+      'Tüm premium şablonların kilidini aç',
+      'Unlock all premium templates',
     );
   }
 
   String _ctaSubtitle(BuildContext context) {
     return _txt(
       context,
-      'Daha fazla şablon, özel koleksiyonlar ve gelişmiş içeriklere eriş.',
-      'Access more templates, exclusive collections and advanced content.',
+      'Daha fazla şablon ve gelişmiş içeriklere eriş.',
+      'Access more templates and advanced content.',
     );
   }
 
@@ -548,7 +538,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   }
 
   Widget _buildAestheticCategoryCard(CategoryModel cat, AppLocalizations l10n) {
-    final showLock = cat.isPremium && !_isPro;
+    // ✅ YENİ: Kilit ikonu tamamen kaldırıldı, çünkü her yere girilebiliyor.
     final badgeColor = _badgeColor(cat);
 
     return Padding(
@@ -564,11 +554,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: showLock
-                    ? const Color(0xFFFFE4A3)
-                    : const Color(0xFFEAEFF6),
-              ),
+              border: Border.all(color: const Color(0xFFEAEFF6)),
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xFF0F172A).withOpacity(0.04),
@@ -679,46 +665,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                               ),
                               child: _buildCountWidget(cat, l10n),
                             ),
-                            if (showLock) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 7,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFFBEB),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.lock_rounded,
-                                      size: 13,
-                                      color: Color(0xFFD97706),
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      'Pro',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w800,
-                                        color: const Color(0xFFD97706),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
                             const Spacer(),
-                            Icon(
-                              showLock
-                                  ? Icons.lock_rounded
-                                  : Icons.arrow_forward_ios_rounded,
-                              color: showLock
-                                  ? const Color(0xFFD97706)
-                                  : const Color(0xFFCBD5E1),
+                            const Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              color: Color(0xFFCBD5E1),
                               size: 18,
                             ),
                           ],

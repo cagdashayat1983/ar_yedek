@@ -15,6 +15,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../l10n/app_localizations.dart';
 import '../models/category_model.dart';
 import '../services/subscription_service.dart';
+import '../services/energy_service.dart';
+import '../services/ad_service.dart';
+
 import 'profile_screen.dart';
 import 'subscription_screen.dart';
 import 'learn_screen.dart';
@@ -88,6 +91,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
   String? _errorMessage;
   int? _lastSyncedAtMs;
 
+  int _currentEnergy = 0;
   final int _bottomIndex = 0;
 
   String _selectedTabKey = 'all';
@@ -99,8 +103,10 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
   final String workerUrl = 'https://hayatify-api.cagdasyucedag.workers.dev';
 
   String get _folder => widget.category.templateFolder.toLowerCase().trim();
-  String get _cacheKey => 'cache_templates_v3_$_folder';
-  String get _cacheSyncKey => 'cache_templates_sync_v3_$_folder';
+
+  // ✅ Cache versiyonu artırıldı ki eski yanlış premium/free kayıtları silinsin
+  String get _cacheKey => 'cache_templates_v4_$_folder';
+  String get _cacheSyncKey => 'cache_templates_sync_v4_$_folder';
 
   @override
   void initState() {
@@ -129,6 +135,9 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       _prefsReady = true;
       _lastSyncedAtMs = _prefs.getInt(_cacheSyncKey);
       _isProUser = await SubscriptionService.isProUser();
+
+      _currentEnergy = await EnergyService.getEnergy();
+
       await _loadAssetsFromCloud();
     } catch (e, st) {
       debugPrint('❌ Init error: $e');
@@ -153,9 +162,178 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
 
   Future<void> _checkSubscriptionStatus() async {
     final bool status = await SubscriptionService.isProUser();
+    final int energy = await EnergyService.getEnergy();
     if (!mounted) return;
-    setState(() => _isProUser = status);
+    setState(() {
+      _isProUser = status;
+      _currentEnergy = energy;
+    });
     _apply();
+  }
+
+  Future<void> _handleTemplateTap(
+    DesignItem item,
+    AppLocalizations l10n,
+  ) async {
+    if (_isProUser) {
+      _showDrawOptions(item, l10n);
+      return;
+    }
+
+    // ✅ Ücretsizler enerji harcamaz
+    if (!item.isPremium) {
+      _showDrawOptions(item, l10n);
+      return;
+    }
+
+    _showPremiumUpsellSheet(item, l10n);
+  }
+
+  void _showEnergyEmptyDialog(DesignItem item, AppLocalizations l10n) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        contentPadding: EdgeInsets.zero,
+        content: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFEF3C7),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.bolt_rounded,
+                      color: Color(0xFFD97706),
+                      size: 48,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _txt(context, 'Enerjin Bitti!', 'Out of Energy!'),
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                      color: const Color(0xFF0F172A),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _txt(
+                      context,
+                      'Çizime devam etmek için kısa bir video izle ve 3 Enerji kazan.',
+                      'Watch a short video to get 3 Energy and keep drawing.',
+                    ),
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _playRewardedAdAndContinue(item, l10n);
+                      },
+                      icon: const Icon(Icons.play_circle_filled_rounded),
+                      label: Text(
+                        _txt(context, 'Video İzle (+3 ⚡)', 'Watch Ad (+3 ⚡)'),
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF111827),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _openSubscriptionFlow();
+                    },
+                    child: Text(
+                      _txt(context, 'Reklamları Kaldır (Pro)',
+                          'Remove Ads (Pro)'),
+                      style: GoogleFonts.poppins(
+                        color: const Color(0xFF6366F1),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              right: 8,
+              top: 8,
+              child: IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.grey),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _playRewardedAdAndContinue(DesignItem item, AppLocalizations l10n) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    AdService.showRewardedAd(
+      onReward: () async {
+        Navigator.pop(context);
+
+        await EnergyService.rewardEnergy(3);
+        final updatedEnergy = await EnergyService.getEnergy();
+
+        if (!mounted) return;
+        setState(() => _currentEnergy = updatedEnergy);
+
+        await EnergyService.consumeEnergy();
+        final afterConsumeEnergy = await EnergyService.getEnergy();
+
+        if (!mounted) return;
+        setState(() => _currentEnergy = afterConsumeEnergy);
+
+        _showDrawOptions(item, l10n);
+      },
+      onFailed: () {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _txt(
+                context,
+                'Reklam şu an hazır değil, lütfen biraz bekle.',
+                'Ad is not ready yet, please wait.',
+              ),
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      },
+    );
   }
 
   Uri _buildListUri(String folder) {
@@ -185,6 +363,30 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       return 'medium';
     }
     return 'easy';
+  }
+
+  // ✅ Premium algılama düzeltildi
+  bool _isPremiumFromFileName(String fileName) {
+    final String name =
+        Uri.decodeComponent(fileName).split('/').last.toLowerCase().trim();
+
+    // En güvenli kontrol: başta pro_/premium_ varsa direkt premium
+    if (name.startsWith('pro_') ||
+        name.startsWith('pro-') ||
+        name.startsWith('premium_') ||
+        name.startsWith('premium-')) {
+      return true;
+    }
+
+    // Ek güvenlik: parça olarak geçiyorsa da premium say
+    if (RegExp(r'(^|[_\-\s])pro([_\-\s.]|$)', caseSensitive: false)
+            .hasMatch(name) ||
+        RegExp(r'(^|[_\-\s])premium([_\-\s.]|$)', caseSensitive: false)
+            .hasMatch(name)) {
+      return true;
+    }
+
+    return false;
   }
 
   Future<void> _loadAssetsFromCloud({bool forceRefresh = false}) async {
@@ -224,6 +426,9 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
 
         final String fullPath = fullUri.toString();
 
+        // ✅ Artık pro_medium_humanp1_06.png gibi isimleri doğru yakalar
+        final bool isProImage = _isPremiumFromFileName(originalFileName);
+
         newItems.add(
           DesignItem(
             path: fullPath,
@@ -231,7 +436,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
             likes: _prefs.getInt('likes_$fullPath') ?? (i * 2 + 10),
             isLiked: _prefs.getBool('liked_$fullPath') ?? false,
             isSaved: _prefs.getBool('saved_$fullPath') ?? false,
-            isPremium: lowerName.contains('pro_'),
+            isPremium: isProImage,
           ),
         );
       }
@@ -325,19 +530,20 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       return _selectedTabKey == 'all' || d.difficultyKey == _selectedTabKey;
     }).toList();
 
-    if (_selectedSortKey == 'newest') {
-      filtered.sort(
-        (a, b) =>
-            _fileNameFromPath(b.path).compareTo(_fileNameFromPath(a.path)),
-      );
-    } else if (_selectedSortKey == 'oldest') {
-      filtered.sort(
-        (a, b) =>
-            _fileNameFromPath(a.path).compareTo(_fileNameFromPath(b.path)),
-      );
-    } else if (_selectedSortKey == 'popular') {
-      filtered.sort((a, b) => b.likes.compareTo(a.likes));
-    }
+    filtered.sort((a, b) {
+      if (a.isPremium != b.isPremium) {
+        return a.isPremium ? 1 : -1;
+      }
+
+      if (_selectedSortKey == 'newest') {
+        return _fileNameFromPath(b.path).compareTo(_fileNameFromPath(a.path));
+      } else if (_selectedSortKey == 'oldest') {
+        return _fileNameFromPath(a.path).compareTo(_fileNameFromPath(b.path));
+      } else if (_selectedSortKey == 'popular') {
+        return b.likes.compareTo(a.likes);
+      }
+      return 0;
+    });
 
     setState(() => _shown = filtered);
   }
@@ -377,18 +583,31 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     try {
       final uri = Uri.parse(path);
       final file = uri.queryParameters['file'];
-      if (file != null && file.isNotEmpty) return file;
+      if (file != null && file.isNotEmpty) return Uri.decodeComponent(file);
     } catch (_) {}
     return path.split('/').last;
   }
 
   String _beautifyFileName(String path) {
     String name = _fileNameFromPath(path);
+    name = Uri.decodeComponent(name);
     name = name.replaceAll(RegExp(r'\.[^.]+$'), '');
-    name = name.replaceAll(
-      RegExp(r'\b(pro|easy|medium|hard)\b', caseSensitive: false),
+
+    // baştaki pro_/premium_ temizle
+    name = name.replaceFirst(
+      RegExp(r'^(pro|premium)[_\-\s]+', caseSensitive: false),
       '',
     );
+
+    // difficulty etiketlerini temizle
+    name = name.replaceAll(
+      RegExp(
+        r'(^|[_\-\s])(easy|medium|hard)(?=[_\-\s]|$)',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+
     name = name.replaceAll(RegExp(r'[_\-]+'), ' ');
     name = name.replaceAll(RegExp(r'\s+'), ' ').trim();
 
@@ -404,13 +623,14 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
   }
 
   String _difficultyLabel(String key, AppLocalizations l10n) {
+    final bool isTr = _isTurkish(context);
     switch (key) {
       case 'medium':
-        return l10n.difficultyMedium;
+        return isTr ? 'ORTA' : 'MED';
       case 'hard':
-        return l10n.difficultyHard;
+        return isTr ? 'ZOR' : 'HARD';
       default:
-        return l10n.difficultyEasy;
+        return isTr ? 'KOLAY' : 'EASY';
     }
   }
 
@@ -589,13 +809,38 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildHandle(),
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.grey,
+                          size: 28,
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 Container(
                   width: 86,
                   height: 86,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),
-                    color: widget.category.color.withOpacity(0.10),
+                    color: widget.category.color.withValues(alpha: 0.10),
                   ),
                   padding: const EdgeInsets.all(12),
                   child: CachedNetworkImage(
@@ -629,8 +874,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                 Text(
                   _txt(
                     context,
-                    'Premium koleksiyonlara, daha fazla şablona ve gelişmiş içeriklere erişmek için Pro’ya geç.',
-                    'Upgrade to Pro to unlock premium collections, more templates and advanced content.',
+                    'Premium şablonları açmak için Pro\'ya geçebilir veya 1 Enerji harcayabilirsin.',
+                    'Upgrade to Pro to unlock premium templates, or use 1 Energy.',
                   ),
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
@@ -640,25 +885,50 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                     color: const Color(0xFF64748B),
                   ),
                 ),
-                const SizedBox(height: 20),
-                _buildFeatureRow(
-                  Icons.workspace_premium_rounded,
-                  _txt(context, 'Tüm premium şablonlar',
-                      'All premium templates'),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      if (_currentEnergy > 0) {
+                        await EnergyService.consumeEnergy();
+                        final updatedEnergy = await EnergyService.getEnergy();
+                        if (!mounted) return;
+                        setState(() => _currentEnergy = updatedEnergy);
+                        _showDrawOptions(item, l10n);
+                      } else {
+                        _showEnergyEmptyDialog(item, l10n);
+                      }
+                    },
+                    icon: Icon(
+                      _currentEnergy > 0
+                          ? Icons.bolt_rounded
+                          : Icons.play_circle_filled_rounded,
+                    ),
+                    label: Text(
+                      _currentEnergy > 0
+                          ? _txt(context, '⚡ 1 Enerji Harca ve Çiz',
+                              '⚡ Use 1 Energy')
+                          : _txt(context, '📺 Video İzle ve Aç',
+                              '📺 Watch Ad to Unlock'),
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD97706),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 10),
-                _buildFeatureRow(
-                  Icons.draw_rounded,
-                  _txt(context, 'Daha fazla özel kategori',
-                      'More exclusive categories'),
-                ),
-                const SizedBox(height: 10),
-                _buildFeatureRow(
-                  Icons.auto_awesome_rounded,
-                  _txt(context, 'Gelişmiş içerik deneyimi',
-                      'Advanced content experience'),
-                ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -669,14 +939,15 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF111827),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18),
                       ),
                       elevation: 0,
                     ),
                     child: Text(
-                      l10n.navPro,
+                      _txt(context, '💎 Pro\'ya Geç (Sınırsız)',
+                          '💎 Get Pro (Unlimited)'),
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
@@ -716,7 +987,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                       width: 72,
                       height: 72,
                       decoration: BoxDecoration(
-                        color: widget.category.color.withOpacity(0.10),
+                        color: widget.category.color.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       padding: const EdgeInsets.all(10),
@@ -848,8 +1119,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              widget.category.color.withOpacity(0.95),
-              widget.category.color.withOpacity(0.72),
+              widget.category.color.withValues(alpha: 0.95),
+              widget.category.color.withValues(alpha: 0.72),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -857,7 +1128,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: widget.category.color.withOpacity(0.20),
+              color: widget.category.color.withValues(alpha: 0.20),
               blurRadius: 24,
               offset: const Offset(0, 12),
             ),
@@ -869,7 +1140,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
               width: 68,
               height: 68,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.16),
+                color: Colors.white.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Icon(
@@ -904,7 +1175,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                       fontWeight: FontWeight.w500,
                       fontSize: 12.5,
                       height: 1.4,
-                      color: Colors.white.withOpacity(0.92),
+                      color: Colors.white.withValues(alpha: 0.92),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1162,13 +1433,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       borderRadius: BorderRadius.circular(24),
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
-        onTap: () {
-          if (locked) {
-            _showPremiumUpsellSheet(item, l10n);
-          } else {
-            _showDrawOptions(item, l10n);
-          }
-        },
+        onTap: () => _handleTemplateTap(item, l10n),
         child: Ink(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -1178,7 +1443,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0F172A).withOpacity(0.04),
+                color: const Color(0xFF0F172A).withValues(alpha: 0.04),
                 blurRadius: 18,
                 offset: const Offset(0, 10),
               ),
@@ -1246,7 +1511,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                             )
                           : _buildBadge(
                               text: _difficultyLabel(item.difficultyKey, l10n),
-                              bg: diffColor.withOpacity(0.12),
+                              bg: diffColor.withValues(alpha: 0.12),
                               fg: diffColor,
                             ),
                     ),
@@ -1259,7 +1524,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                               begin: Alignment.bottomCenter,
                               end: Alignment.center,
                               colors: [
-                                Colors.black.withOpacity(0.08),
+                                Colors.black.withValues(alpha: 0.08),
                                 Colors.transparent,
                               ],
                             ),
@@ -1610,7 +1875,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundColor: color.withOpacity(0.12),
+                backgroundColor: color.withValues(alpha: 0.12),
                 child: Icon(icon, color: color),
               ),
               const SizedBox(width: 14),
@@ -1677,7 +1942,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.14),
+        color: Colors.white.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -1704,7 +1969,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: Colors.white.withOpacity(0.92),
+      color: Colors.white.withValues(alpha: 0.92),
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -1723,7 +1988,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     required Color fg,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
@@ -1732,8 +1997,9 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
         text,
         style: GoogleFonts.poppins(
           color: fg,
-          fontSize: 10.5,
-          fontWeight: FontWeight.w800,
+          fontSize: 8.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
         ),
       ),
     );
@@ -1767,6 +2033,33 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
           ),
         ),
         actions: [
+          if (!_isProUser)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.bolt_rounded,
+                    color: Color(0xFFD97706),
+                    size: 16,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$_currentEnergy',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFFD97706),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           IconButton(
             onPressed: _refreshAll,
             icon: Icon(
